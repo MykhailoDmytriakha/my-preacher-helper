@@ -18,6 +18,7 @@ import { equalValues, object, own, readField, writeField } from './fieldValues';
 import { mergeFirstGroupMeeting, mergeFirstGroupMeetingCommand } from './groupFirstMeeting';
 import { groupPlan, groupPlanFields, matchingGroupFlowCopySources, matchingGroupFlowRetirements, mergeGroupPlan } from './groupFlowTopology';
 import { readHardQuestionGroup } from './hardQuestionGroupCreation';
+import { hardQuestionRankCollection, HARD_QUESTION_REORDER } from './hardQuestionRankOrder';
 import { HARD_QUESTION_BASIS_SCRIPTURE, hardQuestionThemeListPath, reviewMergedBasisScripture } from './hardQuestionThemeLists';
 import { mergeIdentityTree } from './identityTreeMerge';
 import { outlinePlacementField } from './outlinePlacementResource';
@@ -404,6 +405,34 @@ function validateHardQuestionGroupCreation(command: Extract<DataCommand, { relat
   validateCreate({ ...command, kind: 'create' }, getResourcePolicy('hardQuestions'));
 }
 
+function validateHardQuestionReorder(command: Extract<DataCommand, { relation: typeof HARD_QUESTION_REORDER }>): void {
+  if (!hardQuestionRankCollection(command.resource.collection) || !Array.isArray(command.edits) || !Array.isArray(command.witnesses)
+    || command.edits.length < 1 || command.witnesses.length > 3
+    || (command.edits.length === 1 && !command.witnesses.length)
+    || command.edits.length + command.witnesses.length > MAX_RELATION_RESOURCES) fail('Invalid hard question reorder');
+  const ids = new Set<string>(), ranks = new Set<number>();
+  const validRank = (rank: unknown) => typeof rank === 'number' && Number.isFinite(rank);
+  const validLink = (id: unknown) => id === null || isValidIdentifier(id);
+  const scope = command.scope;
+  if (command.resource.collection === 'hardQuestionThemes' ? scope !== null
+    : (!object(scope) || !validLink(scope.themeId) || !validLink(scope.groupId) || (!scope.themeId && scope.groupId))) {
+    fail('Invalid hard question reorder scope');
+  }
+  for (const row of [...command.edits, ...command.witnesses]) {
+    if (!object(row) || !isValidIdentifier(row.id) || ids.has(row.id)
+      || !(row.generation === null || isValidIdentifier(row.generation)) || !object(row.opening)
+      || (row.opening.rank !== null && !validRank(row.opening.rank))
+      || !validLink(row.opening.themeId) || !validLink(row.opening.groupId)) fail('Invalid hard question reorder');
+    ids.add(row.id);
+  }
+  for (const edit of command.edits) {
+    if (!validRank(edit.rank) || ranks.has(edit.rank) || edit.opening.rank === edit.rank) fail('Invalid replacement rank');
+    ranks.add(edit.rank);
+  }
+  const [primary] = command.edits;
+  if (primary.id !== command.resource.id || primary.generation !== command.generation) fail('Invalid hard question reorder primary');
+}
+
 function validateSeriesMemberCreation(command: Extract<DataCommand, { relation: 'series-member-create' }>): void {
   if (!['sermons', 'groups'].includes(command.resource.collection) || command.generation !== null
     || !object(command.edit) || !object(command.edit.resource)) fail('Invalid series member creation');
@@ -522,6 +551,7 @@ function validateRelation(command: Extract<DataCommand, { kind: 'relation' }>): 
     case 'service-order-seed': return validateServiceOrderSeed(command);
     case 'series-member-create': return validateSeriesMemberCreation(command);
     case 'hard-question-group-create': return validateHardQuestionGroupCreation(command);
+    case HARD_QUESTION_REORDER: return validateHardQuestionReorder(command);
     case 'analysis-reshape': return validateAnalysisReshape(command);
     case 'share-link-create': return validateShareLinkCreate(command);
     case 'share-link-revoke': return validateShareLinkRevoke(command);

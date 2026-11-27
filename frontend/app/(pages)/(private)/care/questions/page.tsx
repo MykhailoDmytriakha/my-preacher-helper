@@ -12,7 +12,7 @@ import { NewQuestionDialog, NewThemeDialog } from '@/components/hardQuestions/di
 import {
   BackLink, CountChip, FIELD, ListLabel, PANEL, PRIMARY_BUTTON, questionPath, QuestionRow, QUIET_BUTTON, QUIET_PRESSED, ROSE, ROW, SECONDARY_BUTTON, themePath,
 } from '@/components/hardQuestions/parts';
-import { ReturnedGroupQuestion } from '@/components/hardQuestions/ReturnedGroupQuestion';
+import { ReturnedGroupQuestion, ReturnedHardQuestionOrder } from '@/components/hardQuestions/ReturnedGroupQuestion';
 import { ThemeCard } from '@/components/hardQuestions/ThemeCard';
 import { ListReadFeedback } from '@/components/ListReadFeedback';
 import { ReorderArrows } from '@/components/ui/ReorderArrows';
@@ -86,6 +86,7 @@ export default function HardQuestionsPage() {
       <div className="mt-3"><DataCollectionStatus state={section.themesState} /><DataCollectionStatus state={section.questionsState} /></div>
       <ListReadFeedback state={readState} />
       <ReturnedGroupQuestion />
+      <ReturnedHardQuestionOrder />
 
       {empty ? (
         <section className="mt-10 flex flex-col items-center rounded-2xl border border-dashed border-gray-300 px-6 py-10 text-center dark:border-gray-700">

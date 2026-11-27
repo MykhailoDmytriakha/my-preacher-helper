@@ -39,6 +39,7 @@ import { groupStepPlacementPredecessor, groupStepWitness, projectGroupStepOnDocu
 import { captureHardQuestionBasisFields, HARD_QUESTION_BASIS_POLICY } from './hardQuestionBasisFields';
 import { HARD_QUESTION_GROUP_CREATE, type HardQuestionGroupIntent } from './hardQuestionGroupCreation';
 import { captureHardQuestionPlacement, matchesHardQuestionPlacement, projectHardQuestionPlace, type HardQuestionPlacement } from './hardQuestionPlacement';
+import { hardQuestionRankCollection, HARD_QUESTION_REORDER, type CapturedHardQuestionRankWitness, type HardQuestionRankOpening, type HardQuestionRankScope } from './hardQuestionRankOrder';
 import { captureHomileticMoves, captureHomileticTitles, matchingHomileticMoves, matchingHomileticPositionReviews, matchingHomileticTitles, restoreHomileticOpenings } from './homileticPlanCapture';
 import { seriesCommandParticipant } from './membershipIntent';
 import { outlinePlacementField } from './outlinePlacementResource';
@@ -98,6 +99,9 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   id: string;
   atomic?: AtomicCommitIdentity;
   hardQuestionGroupIntent?: HardQuestionGroupIntent;
+  hardQuestionRankOpening?: HardQuestionRankOpening;
+  /** Its rejected order was already separated from this ordinary Save's retained intent. */
+  settledHardQuestionRankPredecessor?: true;
   seriesMembership?: SeriesMembershipCapture;
   /** Captured catalog copy when it came from a queued predecessor rather than the baseline. */
   seriesMembershipOpening?: DocumentData;
@@ -311,6 +315,10 @@ export interface AtomicCapture {
   retentionScope?: string;
   seriesMembership?: SeriesMembershipCapture;
   hardQuestionGroupIntent?: HardQuestionGroupIntent;
+  hardQuestionRankOpening?: HardQuestionRankOpening;
+  hardQuestionRankWitnesses?: CapturedHardQuestionRankWitness[];
+  hardQuestionRankScope?: HardQuestionRankScope | null;
+  hardQuestionRankScopeRequests?: string[];
 }
 
 export interface CommitEvent { request: CommitRequest }
@@ -387,6 +395,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.preachDateFieldActions ?? null, incoming.preachDateFieldActions ?? null)
     || !equalValues(current.preachStatusActions ?? null, incoming.preachStatusActions ?? null)
     || !equalValues(current.hardQuestionGroupIntent ?? null, incoming.hardQuestionGroupIntent ?? null)
+    || !equalValues(current.hardQuestionRankOpening ?? null, incoming.hardQuestionRankOpening ?? null)
     || !equalValues(current.value, incoming.value) || !equalValues(current.atomic ?? null, incoming.atomic ?? null)
     || !equalValues(current.deleteAfter ?? null, incoming.deleteAfter ?? null)
     || !equalValues(current.removalLineage ?? null, incoming.removalLineage ?? null)
@@ -1157,6 +1166,11 @@ export class CommitQueue {
       && frozen[1].captured.confirmed.resource.collection === 'hardQuestionThemes' && frozen[1].hardQuestionGroupIntent
       && !frozen[1].captured.confirmed.metadata?.deleted && frozen[1].captured.draft !== null
       && (frozen[1].captured.confirmed.value !== null || Boolean(frozen[1].predecessorId));
+    const firstCollection = frozen[0]?.captured.confirmed.resource.collection;
+    const questionReorder = firstCollection && hardQuestionRankCollection(firstCollection) && frozen.every(item =>
+      item.captured.confirmed.resource.collection === firstCollection && item.hardQuestionRankOpening
+      && !item.captured.confirmed.metadata?.deleted && item.captured.draft !== null
+      && (item.captured.confirmed.value !== null || Boolean(item.predecessorId)));
     const councilCarry = frozen.length === 2 && frozen.every(item => item.captured.confirmed.resource.collection === 'councils')
       && frozen[0].captured.confirmed.value !== null && frozen.every(item => item.captured.draft !== null)
       && (frozen[1].captured.confirmed.value !== null || frozen[1].captured.confirmed.metadata === null);
@@ -1164,10 +1178,10 @@ export class CommitQueue {
       && frozen.every(item => item.captured.confirmed.resource.collection === 'studyNotes' && item.captured.draft !== null
         && !item.captured.confirmed.metadata?.deleted && (item.captured.confirmed.value !== null || item.captured.confirmed.metadata === null))
       && frozen[0].captured.confirmed.value !== null;
-    if (frozen.length < 2 || frozen.length > MAX_RELATION_RESOURCES
+    if (frozen.length < (questionReorder ? 1 : 2) || frozen.length > MAX_RELATION_RESOURCES
       || new Set(frozen.map(item => JSON.stringify(item.captured.confirmed.resource))).size !== frozen.length
       || frozen.some((item, index) => item.captured.conflicts.length || (!(creation && index === 0)
-        && !questionGroupCreation && !councilCarry && !analysisReshape && item.captured.confirmed.resource.collection !== 'series'))) throw new Error('Invalid atomic relation capture');
+        && !questionGroupCreation && !questionReorder && !councilCarry && !analysisReshape && item.captured.confirmed.resource.collection !== 'series'))) throw new Error('Invalid atomic relation capture');
     if (frozen.some(item => (item.captured.confirmed.value && item.captured.confirmed.value.userId !== owner)
       || (item.captured.draft && item.captured.draft.userId !== owner))) throw new Error('Atomic capture belongs to another owner');
     const records = await this.options.store.list(owner); this.assertCurrent(owner, generation);
@@ -1176,9 +1190,13 @@ export class CommitQueue {
       if (!existing.some(Boolean)) return null;
       if (!existing.every(Boolean) || !existing[0]!.atomic || existing.some(record => !equalValues(existing[0]!.atomic, record!.atomic))
         || !equalValues(existing[0]!.atomic.participants, existing.map(record => record!.id))
+        || !equalValues(existing[0]!.atomic.hardQuestionRankWitnesses, frozen[0].hardQuestionRankWitnesses)
+        || !equalValues(existing[0]!.atomic.hardQuestionRankScope, frozen[0].hardQuestionRankScope)
+        || !equalValues(existing[0]!.atomic.hardQuestionRankScopeRequests, frozen[0].hardQuestionRankScopeRequests)
         || existing.some((record, index) => !equalValues(record!.baseline, frozen[index].captured.confirmed) || !equalValues(record!.value, frozen[index].captured.draft)
           || frozen[index].retentionScope !== record!.retentionScope
           || !equalValues(frozen[index].hardQuestionGroupIntent ?? null, record!.hardQuestionGroupIntent ?? null)
+          || !equalValues(frozen[index].hardQuestionRankOpening ?? null, record!.hardQuestionRankOpening ?? null)
           || !equalValues(frozen[index].seriesMembership ?? null, record!.seriesMembership ?? null)
           || (frozen[index].predecessorId !== undefined && frozen[index].predecessorId !== record!.predecessor))) throw new Error('Saved atomic capture cannot change');
       return clone(existing as CommitRequest[]);
@@ -1187,12 +1205,15 @@ export class CommitQueue {
     const id = this.options.operationId();
     const atomic: AtomicCommitIdentity = { id, participants: frozen.map((_, index) => index === 0 ? id : `${id}-participant-${index}`),
       ...(creation ? { kind: 'create-member' as const } : councilCarry ? { kind: 'council-carry' as const }
-        : analysisReshape ? { kind: 'analysis-reshape' as const } : questionGroupCreation ? { kind: HARD_QUESTION_GROUP_CREATE } : {}) };
+        : analysisReshape ? { kind: 'analysis-reshape' as const } : questionGroupCreation ? { kind: HARD_QUESTION_GROUP_CREATE }
+          : questionReorder ? { kind: HARD_QUESTION_REORDER, hardQuestionRankWitnesses: frozen[0].hardQuestionRankWitnesses,
+            hardQuestionRankScope: frozen[0].hardQuestionRankScope,
+            hardQuestionRankScopeRequests: frozen[0].hardQuestionRankScopeRequests } : {}) };
     const requests = frozen.map((item, index): CommitRequest => {
       const predecessors = records.filter(record => record.editorId === item.editorId && record.state !== 'cancelled');
       const predecessor = item.predecessorId === null ? undefined : item.predecessorId ? records.find(record => record.id === item.predecessorId)
         : predecessors.sort((a, b) => b.editGeneration - a.editGeneration)[0];
-      if (questionGroupCreation && item.predecessorId && (!predecessor || predecessor.state === 'cancelled')) {
+      if ((questionGroupCreation || questionReorder) && item.predecessorId && (!predecessor || predecessor.state === 'cancelled')) {
         throw Object.assign(new Error(INVALID_PREDECESSOR_REQUEST), { code: 'commit-reference-changed' });
       }
       if ((item.predecessorId && !predecessor) || (predecessor && (predecessor.owner !== owner || predecessor.state === 'cancelled'
@@ -1202,6 +1223,7 @@ export class CommitQueue {
         ...(item.retentionScope ? { retentionScope: item.retentionScope } : {}),
         ...(item.seriesMembership && { seriesMembership: item.seriesMembership }),
         ...(item.hardQuestionGroupIntent && { hardQuestionGroupIntent: item.hardQuestionGroupIntent }),
+        ...(item.hardQuestionRankOpening && { hardQuestionRankOpening: item.hardQuestionRankOpening }),
         baseline, value: item.captured.draft, predecessor: predecessor?.id ?? null, revision: 0, initialized: false,
         working: baseline, intended: item.captured.draft, command: null, submitted: null, sequence: 0, state: 'queued', result: null, unfinalized: [] };
     });

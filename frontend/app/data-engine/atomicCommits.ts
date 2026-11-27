@@ -15,11 +15,12 @@ import { capturedDocumentField, documentFieldPath, documentFieldTargets, isLongT
 import { rebaseOptionalPrayerTags } from './documentTagMembership';
 import { prepareAtomicDomainCommand } from './domainPolicy';
 import { rebaseQueuedExegeticalPoint } from './exegeticalPointCapture';
-import { writeField } from './fieldValues';
+import { readField, writeField } from './fieldValues';
 import { groupFlowCopySources, groupFlowRetirementSources } from './groupFlowTopology';
 import { GROUP_MEETING_FIELDS, meetingFieldTarget, replacedMeetingField } from './groupMeetingFieldAction';
 import { mergeGroupFlowRebase, projectGroupStepOnDocument } from './groupStepPlacement';
 import { appendHardQuestionGroup, HARD_QUESTION_GROUP_CREATE } from './hardQuestionGroupCreation';
+import { hardQuestionRankOpening, HARD_QUESTION_REORDER, type CapturedHardQuestionRankWitness, type HardQuestionRankScope, type HardQuestionRankWitnessProof } from './hardQuestionRankOrder';
 import { projectCapturedMembership, seriesCommandParticipant } from './membershipIntent';
 import { mergeOutlineAfterAcknowledgement } from './outlinePlacementRepair';
 import { outlinePlacementField } from './outlinePlacementResource';
@@ -42,7 +43,9 @@ import type { DataEngineRuntime } from './runtime';
 import type { CommandResult, DocumentData, EngineMetadata, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 import type { SermonOutline } from '@/models/models';
 
-export interface AtomicCommitIdentity { id: string; participants: string[]; kind?: 'create-member' | 'council-carry' | 'analysis-reshape' | typeof HARD_QUESTION_GROUP_CREATE }
+export interface AtomicCommitIdentity { id: string; participants: string[]; kind?: 'create-member' | 'council-carry' | 'analysis-reshape' | typeof HARD_QUESTION_GROUP_CREATE | typeof HARD_QUESTION_REORDER;
+  hardQuestionRankWitnesses?: CapturedHardQuestionRankWitness[]; hardQuestionRankScope?: HardQuestionRankScope | null;
+  hardQuestionRankScopeRequests?: string[] }
 const sameResource = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
 
 /** Actions whose existing document editors can follow the complete saved effect. */
@@ -116,9 +119,27 @@ function initializePlacement(record: CommitRequest, snapshot: ResourceSnapshot,
   return { ...common, intended: merged.value.exists ? merged.value.value as DocumentData : snapshot.value };
 }
 
+function continueAfterRefusedRank(record: CommitRequest, previous: CommitRequest): CommitRequest {
+  const shown = previous.value, stored = previous.working, draft = record.value;
+  const independent: CommitRequest = { ...record, settledHardQuestionRankPredecessor: true };
+  if (shown && stored.value?.userId === record.owner && sameResource(stored.resource, record.baseline.resource)
+    && !stored.metadata?.deleted && (!record.baseline.metadata || record.baseline.metadata.generation === stored.metadata?.generation)) {
+    if (!draft) return initializePlacement(independent, stored, writeField(shown, ['rank'], readField(stored.value, ['rank'])), stored.value);
+    // Rank changes belong to the failed order. A separate Save of the question's words
+    // can still apply its own fields against the last proven row.
+    if (equalValues(hardQuestionRankOpening(shown), hardQuestionRankOpening(draft))) {
+      return initializePlacement(independent, stored, shown, stored.value);
+    }
+  }
+  return { ...independent, initialized: true, state: 'refused',
+    result: { kind: 'refused', operationId: record.id, code: 'hard-question-order-changed' } };
+}
+
 export function initializeCommit(record: CommitRequest, records: readonly CommitRequest[]): CommitRequest | null {
   if (record.removalLineage) return initializePendingRemoval(record, records);
   const predecessor = record.predecessor && records.find(candidate => candidate.id === record.predecessor);
+  if (!record.atomic && predecessor && predecessor.atomic?.kind === HARD_QUESTION_REORDER
+    && ['refused', 'conflict', 'cancelled'].includes(predecessor.state)) return continueAfterRefusedRank(record, predecessor);
   if (predecessor && isRemovalAfterStandaloneCreation(record)
     && !['queued', 'prepared'].includes(predecessor.state)
     && !(followsStandaloneCreation(record, predecessor) && provesStandaloneCreation(predecessor))) {
@@ -349,7 +370,8 @@ export function atomicParticipants(record: CommitRequest, records: readonly Comm
   const identity = record.atomic;
   if (!identity) return [record];
   const participants = identity.participants.map(id => records.find(candidate => candidate.id === id));
-  if (identity.participants.length < 2 || identity.participants.length > MAX_RELATION_RESOURCES || identity.id !== identity.participants[0]
+  const minimum = identity.kind === HARD_QUESTION_REORDER ? 1 : 2;
+  if (identity.participants.length < minimum || identity.participants.length > MAX_RELATION_RESOURCES || identity.id !== identity.participants[0]
     || new Set(identity.participants).size !== identity.participants.length || !identity.participants.includes(record.id)
     || participants.some(candidate => !candidate || candidate.owner !== record.owner || !equalValues(candidate.atomic, identity))) {
     throw new Error('Incomplete atomic commit ownership');
@@ -379,6 +401,31 @@ export interface AtomicCommitContext {
   trackAnswer?: TrackCommitAnswer;
 }
 
+/** A read-only neighbor can come from a still-pending Save. Only its proven rank goes on the wire. */
+function resolveRankWitnesses(primary: CommitRequest, records: readonly CommitRequest[]): HardQuestionRankWitnessProof[] | null | false {
+  for (const id of primary.atomic?.hardQuestionRankScopeRequests ?? []) {
+    const request = records.find(item => item.id === id);
+    if (request && ['queued', 'prepared'].includes(request.state)) return null;
+    if (request?.state !== 'acknowledged') return false;
+  }
+  const resolved: HardQuestionRankWitnessProof[] = [];
+  for (const { predecessor, ...witness } of primary.atomic?.hardQuestionRankWitnesses ?? []) {
+    if (!predecessor) { resolved.push(witness); continue; }
+    const request = records.find(item => item.id === predecessor);
+    if (request && ['queued', 'prepared'].includes(request.state)) return null;
+    const resource = { collection: primary.baseline.resource.collection, id: witness.id };
+    const snapshot = request?.result?.kind === 'acknowledged' ? request.result.snapshot : null;
+    const generation = snapshot?.metadata?.generation ?? null;
+    if (!snapshot?.value || !sameResource(snapshot.resource, resource) || snapshot.value.userId !== primary.owner
+      || snapshot.metadata?.deleted || !equalValues(hardQuestionRankOpening(snapshot.value), witness.opening)
+      || (witness.generation !== null && generation !== witness.generation)) {
+      return false;
+    }
+    resolved.push({ ...witness, generation });
+  }
+  return resolved;
+}
+
 /** Called only by CommitQueue. Every state transition wins CAS for all participants. */
 export async function advanceAtomicCommit(participants: CommitRequest[], records: readonly CommitRequest[], context: AtomicCommitContext): Promise<boolean> {
   const primary = participants[0];
@@ -406,9 +453,13 @@ export async function advanceAtomicCommit(participants: CommitRequest[], records
   }
   if (!primary.command) {
     let command;
+    const witnesses = resolveRankWitnesses(primary, records);
+    if (witnesses === null) return false;
+    if (witnesses === false) return commit(participants.map(record => ({ ...record, state: 'refused',
+      result: { kind: 'refused', operationId: record.id, code: 'hard-question-order-changed' } })));
     try {
       command = prepareAtomicDomainCommand(primary.owner, primary.id, participants.map(seriesCommandParticipant),
-        participants[1]?.hardQuestionGroupIntent);
+        participants[1]?.hardQuestionGroupIntent, witnesses, primary.atomic?.hardQuestionRankScope);
     } catch (error) {
       const code = (error as { code?: unknown }).code;
       if (typeof code !== 'string') throw error;
@@ -468,7 +519,8 @@ export function cancellationScope(records: readonly CommitRequest[], editorId: s
   let added: boolean;
   do {
     added = false;
-    for (const record of records) if (selected.has(record.id) || (record.predecessor && selected.has(record.predecessor))) {
+    for (const record of records) if (selected.has(record.id)
+      || (record.predecessor && !record.settledHardQuestionRankPredecessor && selected.has(record.predecessor))) {
       for (const participant of atomicParticipants(record, records)) if (!selected.has(participant.id)) { selected.add(participant.id); added = true; }
     }
   } while (added);

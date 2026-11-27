@@ -36,6 +36,8 @@ import { captureHardQuestionGroup } from './hardQuestionGroupCapture';
 import { HARD_QUESTION_GROUP_CREATE, type HardQuestionGroupIntent } from './hardQuestionGroupCreation';
 import { readHardQuestionPlacementConflict } from './hardQuestionPlacement';
 import { readHardQuestionPlacementReview } from './hardQuestionPlacementChoice';
+import { captureHardQuestionRanks, captureHardQuestionRankWitness, pendingRankScopeRequests } from './hardQuestionRankCapture';
+import { hardQuestionRankCollection, HARD_QUESTION_REORDER, type HardQuestionRankChange, type HardQuestionRankCollection, type HardQuestionRankScope, type HardQuestionRankWitness } from './hardQuestionRankOrder';
 import { readHardQuestionThemeOrderReview, type HardQuestionThemeOrderChoices } from './hardQuestionThemeOrderReview';
 import { HOMILETIC_POSITION_PROJECTION, HOMILETIC_POSITION_REVIEW } from './homileticPlan';
 import { reviewedHomileticList } from './homileticPlanChoice';
@@ -58,7 +60,7 @@ import { oversizedNoteOpening } from './oversizedNoteCorrection';
 import { PlanCellEmergency, type PlanCellEmergencyStorage } from './planCellEmergency';
 import { unresolvedPreachDateField } from './preachDateChoice';
 import { readPrivateDocumentReview } from './privateDocumentReview';
-import { getResourcePolicy, equalValues, isValidIdentifier, readField } from './protocol';
+import { getResourcePolicy, equalValues, isValidIdentifier, MAX_RELATION_RESOURCES, readField } from './protocol';
 import { documentRecordPresence, type RecordPresence } from './recordPresence';
 import { forkCheckpoint, isOnlyRemovedCreationCopy, isPassiveManualContinuation, isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointEditorId, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
 import { RecoveryPresence, recoverySources, type RecoveryPresenceKind, type RecoveryPresenceLease, type RecoveryPresencePort } from './recoveryPresence';
@@ -1233,6 +1235,39 @@ export class DataEngine {
       this.assertCurrent(owner, generation);
       return captureHardQuestionGroup(owner, this.options.operationId(), resource, words, snapshot, selected, requests);
     }, theme.id);
+    await this.finishHardQuestionCapture(owner, generation, capture);
+  }
+
+  /** Rank repair has one durable owner, so neither storage nor delivery can keep only part of it. */
+  async reorderHardQuestionRows(collection: HardQuestionRankCollection, changes: readonly HardQuestionRankChange[],
+    witnesses: readonly HardQuestionRankWitness[], scope: HardQuestionRankScope | null): Promise<void> {
+    const owner = this.requireOwner(), generation = this.generation;
+    const edits = copy(changes), anchors = copy(witnesses), openingScope = copy(scope);
+    const participants = [...edits, ...anchors];
+    if (!hardQuestionRankCollection(collection) || !edits.length || anchors.length > 3 || participants.length > MAX_RELATION_RESOURCES
+      || (edits.length === 1 && !anchors.length)
+      || new Set(participants.map(change => change.id)).size !== participants.length) {
+      throw Object.assign(new Error('Invalid reorder participants'), { code: 'hard-question-order-changed' });
+    }
+    const resources = participants.map(item => ({ collection, id: item.id }));
+    resources.forEach(resource => this.validateResource(resource, owner));
+    const capture = () => this.saveLeasedAtomicAction(owner, generation, HARD_QUESTION_REORDER, async () => {
+      const requests = await this.commits.list();
+      this.assertCurrent(owner, generation);
+      requests.forEach(request => this.rememberCommit(request));
+      const snapshots = await Promise.all(resources.map(async resource => await this.cachedSnapshotWithAcknowledgements(owner, generation, resource)
+        ?? requests.find(request => sameResource(resource, request.baseline.resource))?.baseline
+        ?? await this.readSnapshot(owner, generation, resource)));
+      this.assertCurrent(owner, generation);
+      const proof = anchors.map((anchor, index) => captureHardQuestionRankWitness(owner, anchor, snapshots[edits.length + index], requests));
+      const captured = captureHardQuestionRanks(owner, this.options.operationId(), edits, snapshots, requests);
+      return [{ ...captured[0], hardQuestionRankWitnesses: proof, hardQuestionRankScope: openingScope,
+        hardQuestionRankScopeRequests: pendingRankScopeRequests(owner, participants, openingScope, requests) }, ...captured.slice(1)];
+    }, collection);
+    await this.finishHardQuestionCapture(owner, generation, capture);
+  }
+
+  private async finishHardQuestionCapture(owner: string, generation: number, capture: () => Promise<CommitRequest[]>): Promise<void> {
     try { await capture(); }
     catch (error) {
       if ((error as { code?: string })?.code !== 'commit-reference-changed') throw error;
@@ -1258,13 +1293,30 @@ export class DataEngine {
     });
   }
 
-  async discardRefusedHardQuestionGroup(id: string): Promise<void> {
+  discardRefusedHardQuestionGroup(id: string): Promise<void> {
+    return this.discardRefusedHardQuestionAction(HARD_QUESTION_GROUP_CREATE, id);
+  }
+
+  async listRefusedHardQuestionOrders(themeId?: string): Promise<string[]> {
+    const owner = this.requireOwner(), generation = this.generation;
+    const requests = await this.commits.list();
+    this.assertCurrent(owner, generation);
+    return [...new Set(requests.slice().reverse().flatMap(request => request.atomic?.kind === HARD_QUESTION_REORDER
+      && (!themeId || request.hardQuestionRankOpening?.themeId === themeId)
+      && ['conflict', 'refused'].includes(request.state) ? [request.atomic.id] : []))];
+  }
+
+  discardRefusedHardQuestionOrder(id: string): Promise<void> {
+    return this.discardRefusedHardQuestionAction(HARD_QUESTION_REORDER, id);
+  }
+
+  private async discardRefusedHardQuestionAction(kind: typeof HARD_QUESTION_GROUP_CREATE | typeof HARD_QUESTION_REORDER, id: string): Promise<void> {
     const owner = this.requireOwner(), generation = this.generation;
     const requests = await this.commits.list();
     this.assertCurrent(owner, generation);
     const root = requests.find(request => request.id === id && request.atomic?.id === id
-      && request.atomic.kind === HARD_QUESTION_GROUP_CREATE && request.state === 'refused');
-    if (!root?.atomic) throw Object.assign(new Error('The returned question changed'), { code: 'decision-changed' });
+      && request.atomic.kind === kind && ['refused', 'conflict'].includes(request.state));
+    if (!root?.atomic) throw Object.assign(new Error('The returned action changed'), { code: 'decision-changed' });
     await this.commits.cancelAction(root.atomic.participants, true);
     this.assertCurrent(owner, generation);
     await this.commits.finishCancellation('', root.atomic.participants);
@@ -2435,7 +2487,7 @@ export class DataEngine {
       const group = request.atomic?.id ?? request.id;
       const transferredSource = request.state === 'cancelled' && Boolean(request.transferredTo);
       if (completed.has(group) || (request.state !== 'acknowledged' && !transferredSource
-        && ![COUNCIL_CARRY, ANALYSIS_RESHAPE, HARD_QUESTION_GROUP_CREATE].includes(request.atomic?.kind ?? ''))) continue;
+        && ![COUNCIL_CARRY, ANALYSIS_RESHAPE, HARD_QUESTION_GROUP_CREATE, HARD_QUESTION_REORDER].includes(request.atomic?.kind ?? ''))) continue;
       completed.add(group);
       await this.completeAcceptedProjection(owner, generation, request, requests);
     }

@@ -72,8 +72,8 @@ export function seriesCommandParticipant(record: CommitRequest): SeriesCommandPa
     membership: { ...seriesMembership, ...(seriesMembershipPredecessor && { predecessorOperationId: seriesMembershipPredecessor }) },
     opening, authored: value,
   } : undefined;
-  const analysisFramePredecessorRevision = record.analysisFramePredecessorRevision;
-  return { confirmed: working, draft: intended, ...(captured && { captured }),
+  const { analysisFramePredecessorRevision, hardQuestionRankOpening } = record;
+  return { confirmed: working, draft: intended, ...(captured && { captured }), ...(hardQuestionRankOpening && { hardQuestionRankOpening }),
     ...(analysisFramePredecessorRevision !== undefined && { analysisFramePredecessorRevision }) };
 }
 

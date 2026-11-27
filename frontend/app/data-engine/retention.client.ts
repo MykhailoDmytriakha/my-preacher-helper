@@ -10,7 +10,7 @@ import type { EditorRecord } from './controller';
 import type { OrdinaryEditorLeases } from './ordinaryEditorLeases.client';
 
 export const COMMIT_ROW_KINDS = ['request', 'atomic-request', 'creation-request', 'council-carry-request',
-  'analysis-reshape-request', 'hard-question-group-create-request', 'ordered-delete-request', 'sermon-note-text-request', 'sermon-scratch-removal-request', 'sermon-scratch-text-recovery-request', 'sermon-amended-sketch-request'] as const;
+  'analysis-reshape-request', 'hard-question-group-create-request', 'hard-question-reorder-request', 'ordered-delete-request', 'sermon-note-text-request', 'sermon-scratch-removal-request', 'sermon-scratch-text-recovery-request', 'sermon-amended-sketch-request'] as const;
 
 type CommitRow = Pick<CommitRequest, 'owner' | 'editorId' | 'editGeneration' | 'atomic' | 'deleteAfter' | 'sermonNoteText' | 'scratchRemoval' | 'scratchTextRecovery'>;
 function commitRowKind(request: CommitRow): typeof COMMIT_ROW_KINDS[number] {
@@ -23,6 +23,7 @@ function commitRowKind(request: CommitRow): typeof COMMIT_ROW_KINDS[number] {
   switch (request.atomic?.kind) {
     case 'analysis-reshape': return 'analysis-reshape-request';
     case 'hard-question-group-create': return 'hard-question-group-create-request';
+    case 'hard-question-reorder': return 'hard-question-reorder-request';
     case 'council-carry': return 'council-carry-request';
     case 'create-member': return 'creation-request';
     default: return request.atomic ? 'atomic-request' : 'request';

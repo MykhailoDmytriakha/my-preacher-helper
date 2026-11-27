@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 
+import { hardQuestionRankOpening, type HardQuestionRankCollection, type HardQuestionRankScope } from '@/data-engine/hardQuestionRankOrder';
 import { isLiveCollectionDocument, useDataCollection, useDocumentActions } from '@/data-engine/react.client';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useAuth } from '@/providers/AuthProvider';
 import { newClientId } from '@/utils/clientId';
 import {
-  buildLibrary, cleanList, cleanText, entryId, groupNamed, HARD_QUESTION_THEMES, HARD_QUESTIONS, moveInList, movePlan, rankForNewQuestion, readQuestion,
+  buildLibrary, cleanList, cleanText, entryId, groupNamed, HARD_QUESTION_THEMES, HARD_QUESTIONS, moveInList, rankForNewQuestion, rankMovePlan, readQuestion,
   readTheme, standsOnScripture, storedLists, type HardQuestionLibrary, type MoveTarget, type StoredEntry, type StoredLists,
 } from '@/utils/hardQuestions';
 import { rankForAppend, sortByRank } from '@/utils/listRank';
@@ -15,10 +16,11 @@ import { awaitWriteOperation, type WriteOperation } from '@/utils/recoverableWri
 
 import type { HardQuestionPlacementOpening } from '@/data-engine/react.client';
 import type { DocumentData } from '@/data-engine/types';
-import type { HardQuestion, HardQuestionBasis, HardQuestionGroup } from '@/models/models';
+import type { HardQuestion, HardQuestionBasis, HardQuestionGroup, HardQuestionTheme } from '@/models/models';
 
 const themeRef = (id: string) => ({ collection: HARD_QUESTION_THEMES, id });
 const questionRef = (id: string) => ({ collection: HARD_QUESTIONS, id });
+const rankKey = (collection: string, id: string) => collection + ':' + id;
 const now = () => new Date().toISOString();
 const quiet = () => undefined;
 
@@ -83,15 +85,23 @@ export function useHardQuestions() {
    * them, so two quick presses count from the same, real order rather than from a list that has not
    * caught up (Codex review, round 2). Each one leaves once the list shows it.
    */
-  const pendingRanks = useRef(new Map<string, number>());
+  const pendingRanks = useRef(new Map<string, { collection: HardQuestionRankCollection; id: string; rank: number; atomic: boolean }>());
+  const pendingOrders = useRef(new Set<string>());
+  const collectionRows = [...(themesCollection.state?.documents ?? []), ...(questionsCollection.state?.documents ?? [])];
+  pendingOrders.current = new Set(collectionRows.filter(row => row.pendingRankOrder).map(row => rankKey(row.resource.collection, row.resource.id)));
   useEffect(() => {
-    for (const [id, rank] of pendingRanks.current) {
-      const shown = library.questionById.get(id)?.rank ?? library.themeById.get(id)?.theme.rank;
-      if (shown === undefined || shown === rank) pendingRanks.current.delete(id);
+    const rows = [...(themesCollection.state?.documents ?? []), ...(questionsCollection.state?.documents ?? [])];
+    const refused = new Set(rows.filter(row => row.needsAttention).map(row => rankKey(row.resource.collection, row.resource.id)));
+    for (const [key, { collection, id, rank }] of pendingRanks.current) {
+      const shown = collection === HARD_QUESTIONS ? library.questionById.get(id)?.rank : library.themeById.get(id)?.theme.rank;
+      if (shown === undefined || shown === rank || refused.has(key)) pendingRanks.current.delete(key);
     }
-  }, [library]);
-  const withPending = useCallback(<T extends { id: string; rank: number }>(items: readonly T[]): T[] =>
-    sortByRank(items.map((item) => (pendingRanks.current.has(item.id) ? { ...item, rank: pendingRanks.current.get(item.id)! } : item))), []);
+  }, [library, themesCollection.state?.documents, questionsCollection.state?.documents]);
+  const withPending = useCallback(<T extends { id: string; rank: number }>(collection: HardQuestionRankCollection, items: readonly T[]): T[] =>
+    sortByRank(items.map(item => {
+      const saved = pendingRanks.current.get(rankKey(collection, item.id));
+      return saved ? { ...item, rank: saved.rank } : item;
+    })), []);
 
   /** One document's changes, one after another; a failed change does not block the next. */
   const queued = useCallback(<T,>(key: string, run: () => Promise<T>): Promise<T> => {
@@ -204,27 +214,43 @@ export function useHardQuestions() {
     return { ...current, rank, updatedAt: now() };
   }))), [actions, queued, write]);
 
-  /**
-   * Writes a move's ranks one by one, each remembered until the list shows it. A rank that is refused
-   * leaves at once: kept, it would plan the next move over an order the list never takes, and an arrow
-   * would then do nothing (Codex review, 2026-11-26).
-   */
-  const writeRanks = useCallback(async (changes: { id: string; rank: number }[], save: (id: string, rank: number) => Promise<unknown>) => {
-    for (const change of changes) {
-      pendingRanks.current.set(change.id, change.rank);
-      try {
-        await save(change.id, change.rank);
-      } catch (error) {
-        if (pendingRanks.current.get(change.id) === change.rank) pendingRanks.current.delete(change.id);
-        throw error;
+  const writeRanks = useCallback(async (collection: HardQuestionRankCollection, items: readonly (HardQuestion | HardQuestionTheme)[],
+    movedId: string, target: MoveTarget, save: (id: string, rank: number) => Promise<unknown>, scope: HardQuestionRankScope | null = null) => {
+    const ordered = withPending(collection, items);
+    const { changes, repair } = rankMovePlan(ordered, movedId, target);
+    if (!changes.length) return;
+    // A move based on an unacknowledged repair shares its delivery and recovery rules.
+    const followsRepair = ordered.some(item => {
+      const key = rankKey(collection, item.id);
+      return pendingOrders.current.has(key) || pendingRanks.current.get(key)?.atomic;
+    });
+    const atomic = Boolean(repair) || followsRepair;
+    for (const { id, rank } of changes) pendingRanks.current.set(rankKey(collection, id), { collection, id, rank, atomic });
+    try {
+      if (!atomic) await save(changes[0].id, changes[0].rank);
+      else {
+        const openings = new Map(ordered.map(item => [item.id, hardQuestionRankOpening(item)]));
+        const changed = new Set(changes.map(change => change.id));
+        const order = repair?.order ?? moveInList(ordered, movedId, target)!;
+        const movedIndex = repair?.movedIndex ?? order.findIndex(item => item.id === movedId);
+        const witnesses = order.slice(Math.max(0, movedIndex - 1), movedIndex + 2).flatMap(item =>
+          item && !changed.has(item.id) ? [{ id: item.id, opening: openings.get(item.id)! }] : []);
+        await write(actions.reorderHardQuestionRows(collection,
+          changes.map(change => ({ ...change, opening: openings.get(change.id)! })), witnesses, scope));
       }
+    } catch (error) {
+      for (const { id, rank } of changes) {
+        const key = rankKey(collection, id);
+        if (pendingRanks.current.get(key)?.rank === rank) pendingRanks.current.delete(key);
+      }
+      throw error;
     }
-  }, []);
+  }, [actions, withPending, write]);
 
   /** Moves a theme among the themes (an arrow or a drag); the plan is made when the move's turn comes, from the newest list. */
   const moveTheme = useCallback((themeId: string, target: MoveTarget) => queued('themes:order', () =>
-    writeRanks(movePlan(withPending(libraryRef.current.themes.map((view) => view.theme)), themeId, target), setThemeRank)),
-  [queued, setThemeRank, withPending, writeRanks]);
+    writeRanks(HARD_QUESTION_THEMES, libraryRef.current.themes.map(view => view.theme), themeId, target, setThemeRank)),
+  [queued, setThemeRank, writeRanks]);
 
   /**
    * The list a question is moved within: the one the screen shows it in — its group as the theme reads
@@ -232,14 +258,16 @@ export function useHardQuestions() {
    * Null while its theme is not read yet: planned over another list, a move would write a rank from
    * the wrong neighbours (Codex review, 2026-11-26).
    */
-  const listOfQuestion = useCallback((questionId: string): { key: string; questions: HardQuestion[] } | null => {
+  const listOfQuestion = useCallback((questionId: string): { key: string; questions: HardQuestion[]; scope: HardQuestionRankScope } | null => {
     const lib = libraryRef.current;
     const question = lib.questionById.get(questionId);
     if (!question) return null;
     const view = question.themeId ? lib.themeById.get(question.themeId) : undefined;
     if (question.themeId && !view && !themesKnownRef.current) return null;
     const bucket = view?.buckets.find((item) => item.questions.some((entry) => entry.id === questionId));
-    return view && bucket ? { key: `${view.theme.id}:${bucket.key}`, questions: bucket.questions } : { key: ':', questions: lib.withoutTheme };
+    if (view && bucket) return { key: `${view.theme.id}:${bucket.key}`, questions: bucket.questions,
+      scope: { themeId: view.theme.id, groupId: bucket.group?.id ?? null } };
+    return { key: ':', questions: lib.withoutTheme, scope: { themeId: null, groupId: null } };
   }, []);
 
   /** Moves a question inside the list the screen shows it in, planned from the newest list. */
@@ -248,10 +276,10 @@ export function useHardQuestions() {
     if (!start) return Promise.reject(new Error('The theme of this question is not read yet'));
     return queued(`order:${start.key}`, async () => {
       const list = listOfQuestion(questionId);
-      if (!list) throw new Error('The theme of this question is not read yet');
-      await writeRanks(movePlan(withPending(list.questions), questionId, target), (id, rank) => changeQuestion(id, { rank }));
+      if (!list || list.key !== start.key) throw new HardQuestionGoneError();
+      await writeRanks(HARD_QUESTIONS, list.questions, questionId, target, (id, rank) => changeQuestion(id, { rank }), list.scope);
     });
-  }, [changeQuestion, listOfQuestion, queued, withPending, writeRanks]);
+  }, [changeQuestion, listOfQuestion, queued, writeRanks]);
 
   /** Puts a question into another theme or group, at the end of it. */
   /**

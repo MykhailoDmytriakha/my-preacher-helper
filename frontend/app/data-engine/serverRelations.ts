@@ -13,6 +13,7 @@ import { materialNoteIds, seriesMemberResources, sermonSourceReferences } from '
 import { verifyGroupCopySource } from './groupFlowTopology.server';
 import { GROUP_STEP_PLACEMENT_REVIEW, legacyGroupPlacementNeedsReview, planGroupStepPlacement } from './groupStepPlacement.server';
 import { appendHardQuestionGroup } from './hardQuestionGroupCreation';
+import { hardQuestionEffectiveRankScope, hardQuestionRankOpening, HARD_QUESTION_REORDER, type HardQuestionRankWitnessProof } from './hardQuestionRankOrder';
 import { childIdentityIssues } from './legacyChildIdentity';
 import { outlinePlacementField, replaceResourceOutline, TEMPLATE_POINT_PLACEMENT_REVIEW } from './outlinePlacementResource';
 import { legacyTemplatePlacementNeedsReview, planOutlinePointPlacement, type OutlinePointPlacementWrite } from './outlinePointPlacement.server';
@@ -220,6 +221,32 @@ class RelationPlanner {
     if (proposed !== current) this.stage(theme, { groups: proposed.groups! });
     // Both participants need a proof even when the chosen group already exists.
     else this.writes.set(key(theme.resource), advanceResourceSnapshot(theme, current, command.operationId, []));
+  }
+
+  private async reorderHardQuestionRows(command: Extract<DataCommand, { relation: typeof HARD_QUESTION_REORDER }>): Promise<undefined> {
+    const themeIds = command.scope ? [...new Set([...command.edits, ...command.witnesses].flatMap(({ opening }) =>
+      opening.themeId ? [opening.themeId] : []))] : [];
+    const scopes = new Map(await Promise.all(themeIds.map(async id => {
+      const theme = await this.get({ collection: 'hardQuestionThemes', id });
+      return [id, theme.value && !theme.metadata?.deleted && theme.value.userId === command.owner ? theme.value : null] as const;
+    })));
+    const verify = async ({ id, generation, opening }: HardQuestionRankWitnessProof) => {
+      const snapshot = await this.get({ collection: command.resource.collection, id });
+      const value = this.live(snapshot, generation);
+      if (!equalValues(hardQuestionRankOpening(value), opening)) return fail('hard-question-order-changed');
+      if (command.scope) {
+        const available = opening.themeId ? scopes.get(opening.themeId) : null;
+        if (!equalValues(command.scope, hardQuestionEffectiveRankScope(opening, available))) {
+          return fail('hard-question-order-changed');
+        }
+      }
+      return snapshot;
+    };
+    const [updates] = await Promise.all([
+      Promise.all(command.edits.map(async edit => ({ snapshot: await verify(edit), rank: edit.rank }))),
+      Promise.all(command.witnesses.map(verify)),
+    ]);
+    for (const { snapshot, rank } of updates) this.stage(snapshot, { rank });
   }
 
   private async createSeriesMember(command: Extract<DataCommand, { relation: 'series-member-create' }>): Promise<CommandResult | undefined> {
@@ -556,6 +583,7 @@ class RelationPlanner {
       case 'service-order-seed': return this.seedServiceOrder(command);
       case 'series-member-create': return this.createSeriesMember(command);
       case 'hard-question-group-create': return this.createHardQuestionWithGroup(command);
+      case HARD_QUESTION_REORDER: return this.reorderHardQuestionRows(command);
       case 'material-notes': return this.materialRelation(command);
       case 'council-carry': return this.councilCarry(command);
       case 'analysis-reshape': return this.analysisReshape(command);

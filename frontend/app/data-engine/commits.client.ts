@@ -10,8 +10,10 @@ import { captureDeleteOrder, replayDeleteOrder } from './deletionOrdering';
 import { isRetirableOrdinaryEditor, readLeasedAtomicAction, type LeasedAtomicAction } from './editorIdentity';
 import { equalValues, readField } from './fieldValues';
 import { GROUP_MEETING_SLOT, readyMeetingAutosave } from './groupMeetingAutosave';
+import { HARD_QUESTION_REORDER } from './hardQuestionRankOrder';
 import { reconcileManualCaptures } from './manualScope';
 import { writeManualChoiceRecoveries, type ManualStorageRecord } from './manualScopes.client';
+import { MAX_RELATION_RESOURCES } from './protocol';
 import { isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
 import { versionRecoveryRecord } from './recoverySource.client';
 import { COMMIT_ROW_KINDS, activeOrdinaryEditorKey, collectCommitRows, deferCollection, commitCaptureKey, commitDependencyKey, commitGenerationKey, commitProjectionKey, commitRowKey, commitSnapshotKey, readCommitIdentities, readCommitRows } from './retention.client';
@@ -33,6 +35,12 @@ function otherRecoverableCheckpoint(record: unknown, current: CommitRequest): bo
     return false;
   }
 }
+function rankOpeningReferences(request: CommitRequest): string[] {
+  if (request.atomic?.kind !== HARD_QUESTION_REORDER || request.atomic.id !== request.id) return [];
+  return [...(request.atomic.hardQuestionRankScopeRequests ?? []),
+    ...(request.atomic.hardQuestionRankWitnesses ?? []).flatMap(witness => witness.predecessor ? [witness.predecessor] : [])];
+}
+
 /** Older collectors honor reference rows even when they cannot read a new request format. */
 function retainPredecessor(store: IDBObjectStore, request: CommitRequest): void {
   const key = commitDependencyKey(request.owner, request.id);
@@ -41,6 +49,7 @@ function retainPredecessor(store: IDBObjectStore, request: CommitRequest): void 
     if (request.predecessor && !request.initialized) references.add(request.predecessor);
     if (!['acknowledged', 'cancelled', 'refused'].includes(request.state)) {
       request.serviceOrderPlacement?.afterRequests?.forEach(id => references.add(id));
+      if (!request.command && request.state === 'queued') rankOpeningReferences(request).forEach(id => references.add(id));
     }
     for (const id of request.deleteAfter ?? []) references.add(id);
   }
@@ -74,7 +83,9 @@ function writeRecord(store: IDBObjectStore, read: StorageRead, frozen: CommitReq
         const identity = ['identity', frozen.owner, frozen.id];
         read(store.get(identity), used => {
           if (used) throw new Error('Commit identity is already used');
-          validateCommitReferences(store, read, frozen.owner, [...(frozen.predecessor && !frozen.initialized ? [frozen.predecessor] : []), ...(frozen.deleteAfter ?? [])], () => {
+          const references = [...(frozen.predecessor && !frozen.initialized ? [frozen.predecessor] : []),
+            ...(frozen.deleteAfter ?? []), ...rankOpeningReferences(frozen)];
+          validateCommitReferences(store, read, frozen.owner, references, () => {
             store.put(commitRowKey(frozen), identity);
             store.put({ commitReferences: [frozen.id] }, commitProjectionKey(frozen.owner, frozen.id));
             if (frozen.retentionScope) store.put({ commitReferences: [frozen.id] }, commitCaptureKey(frozen.owner, frozen.retentionScope, frozen.id));
@@ -120,8 +131,9 @@ export function createIndexedDbCommitStore(collect = collectCommitRows, leases?:
     const lease = participantLeases.find(identity => identity !== null);
     if (lease) {
       const allowed = atomicAdmissions.get(lease.leaseId);
-      const limit = lease.kind === 'analysis-reshape' ? 3 : 2;
-      if (allowed?.owner !== frozen[0].owner || allowed.kind !== lease.kind || frozen.length < 2 || frozen.length > limit
+      const limit = lease.kind === HARD_QUESTION_REORDER ? MAX_RELATION_RESOURCES : lease.kind === 'analysis-reshape' ? 3 : 2;
+      const minimum = lease.kind === HARD_QUESTION_REORDER ? 1 : 2;
+      if (allowed?.owner !== frozen[0].owner || allowed.kind !== lease.kind || frozen.length < minimum || frozen.length > limit
         || participantLeases.some(identity => identity?.leaseId !== lease.leaseId || identity.kind !== lease.kind)
         || frozen.some(request => request.atomic?.kind !== lease.kind)) throw closedAtomicCapture();
       // A conflicting or rolled-back transaction cannot issue another batch under this lease.

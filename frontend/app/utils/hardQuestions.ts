@@ -291,14 +291,20 @@ function moved<T>(list: readonly T[], from: number, to: number): T[] {
  * (`listRank.ts` names that repair); a move that did nothing was the alternative (Codex review,
  * 2026-11-25). Nothing at an edge. `items` are in the order the screen shows them.
  */
-export function movePlan(items: readonly { id: string; rank: number }[], id: string, target: MoveTarget): { id: string; rank: number }[] {
+export function rankMovePlan<T extends { id: string; rank: number }>(items: readonly T[], id: string, target: MoveTarget):
+  { changes: { id: string; rank: number }[]; repair: { order: T[]; movedIndex: number } | null } {
   const indexes = moveIndexes(items, id, target);
-  if (!indexes) return [];
+  if (!indexes) return { changes: [], repair: null };
   const rank = rankForMove([...items], id, indexes.to);
-  if (rank !== null) return [{ id, rank }];
+  if (rank !== null) return { changes: [{ id, rank }], repair: null };
   const order = moved(items, indexes.from, indexes.to);
-  return order.map((item, position) => ({ id: item.id, rank: (position + 1) * RANK_STEP }))
+  const changes = order.map((item, position) => ({ id: item.id, rank: (position + 1) * RANK_STEP }))
     .filter((change, position) => order[position].rank !== change.rank);
+  return { changes, repair: { order, movedIndex: indexes.to } };
+}
+
+export function movePlan(items: readonly { id: string; rank: number }[], id: string, target: MoveTarget): { id: string; rank: number }[] {
+  return rankMovePlan(items, id, target).changes;
 }
 
 /** A theme's own list (its groups, its bases) after a move: the same items, one of them in its new place. */

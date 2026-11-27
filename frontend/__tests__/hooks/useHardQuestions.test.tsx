@@ -10,6 +10,7 @@ import { useHardQuestions } from '@/hooks/useHardQuestions';
 type Row = { resource: { collection: string; id: string }; value: Record<string, unknown> | null; deleting?: boolean };
 let mockRows: Record<string, Row[]> = {};
 const mockCreateHardQuestionWithGroup = jest.fn((_resource: unknown, _value: unknown, _group: unknown) => Promise.resolve());
+const mockReorderHardQuestionRows = jest.fn((_collection: unknown, _changes: unknown, _witnesses: unknown, _scope: unknown) => Promise.resolve());
 const mockCreate = jest.fn((_resource: unknown, _value: unknown) => Promise.resolve());
 const mockRemove = jest.fn((_resource: unknown) => Promise.resolve());
 const mockCommit = jest.fn((_resource: unknown, _updater: (current: Record<string, unknown> | null) => unknown, _action?: unknown) => Promise.resolve());
@@ -24,7 +25,7 @@ jest.mock('@/data-engine/react.client', () => ({
     loading: false,
     state: collection ? { documents: mockRows[collection] ?? [], complete: collection === 'hardQuestionThemes' ? mockThemesComplete : true } : null,
   }),
-  useDocumentActions: () => ({ ready: true, create: mockCreate, createHardQuestionWithGroup: mockCreateHardQuestionWithGroup, remove: mockRemove, commit: mockCommit, captureActionTime: () => ({ earliestMs: 100, latestMs: 110 }) }),
+  useDocumentActions: () => ({ ready: true, create: mockCreate, createHardQuestionWithGroup: mockCreateHardQuestionWithGroup, remove: mockRemove, commit: mockCommit, reorderHardQuestionRows: mockReorderHardQuestionRows, captureActionTime: () => ({ earliestMs: 100, latestMs: 110 }) }),
 }));
 
 const theme = (id: string, rank: number, extra: Record<string, unknown> = {}): Row => ({
@@ -44,6 +45,7 @@ beforeEach(() => {
   mockThemesComplete = true;
   // Reset, not cleared: a one-time answer a test set and did not use must not leak into the next test.
   mockCreateHardQuestionWithGroup.mockClear();
+  mockReorderHardQuestionRows.mockClear();
   mockCreate.mockClear(); mockRemove.mockClear(); mockCommit.mockReset().mockImplementation(() => Promise.resolve());
   mockRows = {
     hardQuestionThemes: [
@@ -93,6 +95,45 @@ describe('useHardQuestions', () => {
     await act(async () => { await result.current.moveQuestion('q2', 1); });
     const ranks = mockCommit.mock.calls.map(([, updater]) => (updater({ title: 'x', rank: 0 }) as { rank: number }).rank);
     expect(ranks).toEqual([0, 2000]); // up before q1 (1000), then back down just past it — counted from the moved rank, not the stale list
+  });
+
+  it.each(['hardQuestions', 'hardQuestionThemes'] as const)('submits a tied-rank reorder in %s as one operation', async collection => {
+    const ranked = [['a', 1000], ['b', 1000], ['c', 3000], ['d', 4000]] as const;
+    mockRows[collection] = ranked.map(([id, rank]) => collection === 'hardQuestionThemes'
+      ? theme(id, rank) : question(id, { themeId: 'clothes', groupId: 'g1', rank }));
+    const { result } = renderHook(() => useHardQuestions());
+    const move = collection === 'hardQuestionThemes' ? result.current.moveTheme : result.current.moveQuestion;
+    await act(async () => { await move('d', { onto: 'b', side: 'before' }); });
+    expect(mockCommit).not.toHaveBeenCalled();
+    expect(mockReorderHardQuestionRows).toHaveBeenCalledTimes(1);
+    expect(mockReorderHardQuestionRows).toHaveBeenCalledWith(collection, [
+      expect.objectContaining({ id: 'd', rank: 2000 }),
+      expect.objectContaining({ id: 'b', rank: 3000 }),
+      expect.objectContaining({ id: 'c', rank: 4000 }),
+    ], [expect.objectContaining({ id: 'a', opening: expect.objectContaining({ rank: 1000 }) })],
+      collection === 'hardQuestions' ? { themeId: 'clothes', groupId: 'g1' } : null);
+  });
+
+  it('checks the moved row even when only its neighbor needs a new rank', async () => {
+    mockRows.hardQuestions = [['a', 1000], ['b', 1000], ['c', 2000]].map(([id, rank]) =>
+      question(String(id), { themeId: 'clothes', groupId: 'g1', rank }));
+    const { result } = renderHook(() => useHardQuestions());
+    await act(async () => { await result.current.moveQuestion('c', { onto: 'b', side: 'before' }); });
+    expect(mockCommit).not.toHaveBeenCalled();
+    expect(mockReorderHardQuestionRows).toHaveBeenCalledWith('hardQuestions',
+      [expect.objectContaining({ id: 'b', rank: 3000 })],
+      [expect.objectContaining({ id: 'a' }), expect.objectContaining({ id: 'c' })], { themeId: 'clothes', groupId: 'g1' });
+  });
+
+  it('keeps an arrow based on a pending rank repair in the same recovery path', async () => {
+    const ranked = [['a', 1000], ['b', 1000], ['c', 3000], ['d', 4000]] as const;
+    mockRows.hardQuestions = ranked.map(([id, rank]) => question(id, { themeId: 'clothes', groupId: 'g1', rank }));
+    const { result } = renderHook(() => useHardQuestions());
+    await act(async () => { await result.current.moveQuestion('d', { onto: 'b', side: 'before' }); });
+    await act(async () => { await result.current.moveQuestion('d', 1); });
+    expect(mockCommit).not.toHaveBeenCalled();
+    expect(mockReorderHardQuestionRows).toHaveBeenCalledTimes(2);
+    expect(mockReorderHardQuestionRows.mock.calls[1][1]).toEqual([expect.objectContaining({ id: 'd', rank: 3500 })]);
   });
 
   it('lets a refused rank go, so the next arrow is planned over the order the list really has', async () => {

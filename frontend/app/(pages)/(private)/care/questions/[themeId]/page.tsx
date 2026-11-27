@@ -14,7 +14,7 @@ import {
   BackLink, BASIS_DOT, basisPath, DANGER_BUTTON, HelpMark, ListLabel, PANEL, PRIMARY_BUTTON, questionPath, QuestionRow, QUIET_BUTTON, QUIET_PRESSED,
   sectionPath,
 } from '@/components/hardQuestions/parts';
-import { ReturnedGroupQuestion } from '@/components/hardQuestions/ReturnedGroupQuestion';
+import { ReturnedGroupQuestion, ReturnedHardQuestionOrder } from '@/components/hardQuestions/ReturnedGroupQuestion';
 import { EditBasisDialog, NewBasisDialog, THEME_FORM_FIELDS, THEME_FORM_SLOT, ThemeEditDialog } from '@/components/hardQuestions/themeForms';
 import { EngineReadingStatus, OrphanDraftWords, UnsavedDraftNotice, useRouteSegment } from '@/components/hardQuestions/useEngineForm';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
@@ -176,6 +176,7 @@ function ThemeWorkspace({ themeId }: { themeId: string }) {
         reviewing={dialog?.kind === 'edit' || dialog?.kind === 'edit-basis'} />
       <DataCollectionStatus state={section.questionsState} />
       <ReturnedGroupQuestion themeId={themeId} />
+      <ReturnedHardQuestionOrder themeId={themeId} />
       {!document.readOnly && dialog?.kind !== 'edit' && (
         <UnsavedDraftNotice resource={resource} slot={THEME_FORM_SLOT} selection={THEME_FORM_FIELDS} onResume={(draftId) => setDialog({ kind: 'edit', recoverId: draftId })} />
       )}

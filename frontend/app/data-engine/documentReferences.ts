@@ -83,6 +83,7 @@ export function commandReferenceResources(command: DataCommand): ResourceRef[] {
     case 'material-notes': return notes(materialNoteIds(command.beforeNoteIds, command.afterNoteIds));
     case 'series-membership': return command.edits.flatMap(edit => [edit.resource, ...seriesMemberResources(edit.afterItems as unknown as DocumentData[])]);
     case 'hard-question-group-create': return [command.theme.resource];
+    case 'hard-question-reorder': return [...command.edits, ...command.witnesses].map(({ id }) => ({ collection: command.resource.collection, id }));
     case 'series-member-create': return [command.edit.resource, ...documentReferenceResources(command.resource, null, command.value),
       ...seriesMemberResources(command.edit.afterItems as unknown as DocumentData[])];
     case 'council-carry':

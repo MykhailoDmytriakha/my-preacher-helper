@@ -8,6 +8,7 @@ import { carriedCopy, validCouncilCarry } from './councilCarryContent';
 import { materialNoteIds } from './documentReferences';
 import { captureGroupFlowCommandProofs } from './groupFlowTopology';
 import { appendHardQuestionGroup, HARD_QUESTION_GROUP_CREATE, type HardQuestionGroupIntent } from './hardQuestionGroupCreation';
+import { hardQuestionRankOpening, HARD_QUESTION_REORDER, type HardQuestionRankOpening, type HardQuestionRankScope, type HardQuestionRankWitnessProof } from './hardQuestionRankOrder';
 import { diffFields, equalValues, readField, validateCommand, MAX_RELATION_RESOURCES } from './protocol';
 import { relationMirrorFields } from './relationMirrors';
 import { capturePlanTextEvidence, withPlanTextEvidence, type PlanTextEvidence } from './sermonPlanText';
@@ -203,6 +204,7 @@ export interface SeriesCommandParticipant {
   confirmed: ResourceSnapshot;
   draft: DocumentData | null;
   analysisFramePredecessorRevision?: number;
+  hardQuestionRankOpening?: HardQuestionRankOpening;
   captured?: {
     membership: SeriesMembershipCapture & { predecessorOperationId?: string };
     opening: DocumentData;
@@ -234,7 +236,20 @@ export function prepareAtomicSeriesCommand(owner: string, operationId: string, p
 
 /** A click-only council carry uses the same durable participants as a series move. */
 export function prepareAtomicDomainCommand(owner: string, operationId: string,
-  participants: readonly SeriesCommandParticipant[], hardQuestionGroupIntent?: HardQuestionGroupIntent): DataCommand {
+  participants: readonly SeriesCommandParticipant[], hardQuestionGroupIntent?: HardQuestionGroupIntent,
+  hardQuestionRankWitnesses: readonly HardQuestionRankWitnessProof[] = [], hardQuestionRankScope: HardQuestionRankScope | null = null): DataCommand {
+  if (participants[0]?.hardQuestionRankOpening) {
+    const edits = participants.map(({ confirmed, draft, hardQuestionRankOpening: opening }) => {
+      if (!opening || !confirmed.value || confirmed.metadata?.deleted || !draft
+        || confirmed.value.userId !== owner || !equalValues(hardQuestionRankOpening(confirmed.value), opening)
+        || !equalValues({ ...confirmed.value, rank: draft.rank }, draft) || typeof draft.rank !== 'number') {
+        return failure('The order or placement changed', 'hard-question-order-changed');
+      }
+      return { id: confirmed.resource.id, generation: confirmed.metadata?.generation ?? null, rank: draft.rank, opening };
+    });
+    return validateCommand({ protocol: 1, owner, operationId, resource: participants[0].confirmed.resource,
+      generation: edits[0].generation, dependsOn: [], kind: 'relation', relation: HARD_QUESTION_REORDER, edits, witnesses: [...hardQuestionRankWitnesses], scope: hardQuestionRankScope });
+  }
   if (participants[0]?.confirmed.resource.collection === 'hardQuestions') {
     const [question, theme] = participants;
     if (participants.length !== 2 || !hardQuestionGroupIntent || question.confirmed.value || question.confirmed.metadata

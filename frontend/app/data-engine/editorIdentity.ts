@@ -1,4 +1,5 @@
 import { HARD_QUESTION_GROUP_CREATE } from './hardQuestionGroupCreation';
+import { HARD_QUESTION_REORDER } from './hardQuestionRankOrder';
 
 import type { ResourceRef } from './types';
 
@@ -34,7 +35,7 @@ export function isRetirableOrdinaryEditor(editorId: string): boolean {
 }
 
 const leasedAtomicPrefixes = { 'analysis-reshape': 'reshape-lease-v1:', 'council-carry': 'carry-lease-v1:',
-  [HARD_QUESTION_GROUP_CREATE]: 'question-group-lease-v1:' } as const;
+  [HARD_QUESTION_GROUP_CREATE]: 'question-group-lease-v1:', [HARD_QUESTION_REORDER]: 'question-rank-lease-v1:' } as const;
 export type LeasedAtomicAction = keyof typeof leasedAtomicPrefixes;
 export const LEASED_ATOMIC_EDITOR_PREFIXES = Object.values(leasedAtomicPrefixes).map(prefix => JSON.stringify([prefix]).slice(0, -2));
 
@@ -47,7 +48,7 @@ export function readLeasedAtomicAction(editorId: string): { kind: LeasedAtomicAc
   if (!LEASED_ATOMIC_EDITOR_PREFIXES.some(prefix => editorId.startsWith(prefix))) return null;
   try {
     const parts: unknown = JSON.parse(editorId);
-    if (!Array.isArray(parts) || parts.length !== 3 || (parts[1] !== 'analysis-reshape' && parts[1] !== 'council-carry' && parts[1] !== HARD_QUESTION_GROUP_CREATE)
+    if (!Array.isArray(parts) || parts.length !== 3 || (parts[1] !== 'analysis-reshape' && parts[1] !== 'council-carry' && parts[1] !== HARD_QUESTION_GROUP_CREATE && parts[1] !== HARD_QUESTION_REORDER)
       || typeof parts[2] !== 'string' || !parts[2] || typeof parts[0] !== 'string'
       || JSON.stringify(parts) !== editorId) return null;
     const kind: LeasedAtomicAction = parts[1];

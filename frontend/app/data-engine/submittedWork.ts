@@ -23,7 +23,8 @@ export function submittedWorkCheckpoint(owner: string, resource: ResourceRef, re
     if (chain.some(request => request.id === current!.id)) throw new Error('Invalid submitted-work dependency cycle');
     if (current.state === 'cancelled') return null;
     chain.unshift(current);
-    const predecessor: CommitRequest | undefined = current.predecessor ? byId.get(current.predecessor) : undefined;
+    const predecessor: CommitRequest | undefined = current.predecessor && !current.settledHardQuestionRankPredecessor
+      ? byId.get(current.predecessor) : undefined;
     if (current.predecessor && !predecessor && !current.initialized) return null;
     current = predecessor;
   }

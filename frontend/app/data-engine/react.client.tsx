@@ -105,6 +105,7 @@ import type { ManagedEditor, ManagedManualForm, ManualRecoveryPolicy } from './e
 import type { ExegeticalPointEdit } from './exegeticalPointCapture';
 import type { GroupMeetingField, GroupMeetingFieldInput } from './groupMeetingFieldAction';
 import type { HardQuestionGroupIntent } from './hardQuestionGroupCreation';
+import type { HardQuestionRankChange, HardQuestionRankCollection, HardQuestionRankScope, HardQuestionRankWitness } from './hardQuestionRankOrder';
 import type { ManualFieldInput, ManualPath, ManualDocumentMetadataSave } from './manualScope';
 import type { StoredManualScope } from './manualScopes.client';
 import type { MembershipDelivery } from './membershipDelivery';
@@ -812,6 +813,11 @@ export function useDocumentActions() {
     createHardQuestionWithGroup: (resource: ResourceRef, value: DocumentData, intent?: HardQuestionGroupIntent) => {
       if (!browser || !owner || actionOwner.current !== owner) throw new Error(ENGINE_NOT_READY);
       return browser.engine.createHardQuestionWithGroup(resource, value, intent);
+    },
+    reorderHardQuestionRows: (collection: HardQuestionRankCollection, changes: readonly HardQuestionRankChange[],
+      witnesses: readonly HardQuestionRankWitness[], scope: HardQuestionRankScope | null) => {
+      if (!browser || !owner || actionOwner.current !== owner) throw new Error(ENGINE_NOT_READY);
+      return browser.engine.reorderHardQuestionRows(collection, changes, witnesses, scope);
     },
     /** A new document under a stable client ID; a retry with the same ID never creates a second one. */
     create: (resource: ResourceRef, value: DocumentData) => withEditor(resource, editor => editor.commit(() => value), true),

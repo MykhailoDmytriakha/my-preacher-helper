@@ -17,6 +17,7 @@ import type { HardQuestionBasisActions, HardQuestionBasisReview } from './hardQu
 import type { HardQuestionFieldReview, HardQuestionFieldStamps } from './hardQuestionFieldAction';
 import type { HardQuestionGroupProposal } from './hardQuestionGroupCreation';
 import type { HardQuestionPlacement, HardQuestionPlacementOpening } from './hardQuestionPlacement';
+import type { HardQuestionRankChange, HardQuestionRankScope, HardQuestionRankWitnessProof } from './hardQuestionRankOrder';
 import type { HomileticList, HomileticMoveActions, HomileticPositionReviews, HomileticTitleActions } from './homileticPlan';
 import type { SeriesMembershipCapture } from './membershipIntent';
 import type { PrayerStatusObservation, PrayerStatusCapture, PrayerStatusStamp } from './prayerStatusAction';
@@ -349,6 +350,8 @@ export type DataCommand = CommandBase & (
     } }
   | { kind: 'relation'; relation: 'hard-question-group-create'; value: DocumentData; group: HardQuestionGroupProposal; existing?: true;
       theme: { resource: ResourceRef; generation: string | null } }
+  | { kind: 'relation'; relation: 'hard-question-reorder'; edits: Array<HardQuestionRankChange & { generation: string | null }>;
+      witnesses: HardQuestionRankWitnessProof[]; scope: HardQuestionRankScope | null }
   /** Server-owned share-link capability creation, tied to the note version the person saw. */
   | { kind: 'relation'; relation: 'share-link-create'; note: { id: string; generation: string | null; shareRevocation?: string | null };
       authorLanguage: 'en' | 'ru' | 'uk' }

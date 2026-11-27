@@ -36,6 +36,7 @@ import { groupTextDecision, isGroupStatusComparison, projectGroupTextDecisions, 
 import { hardQuestionBasisConflict } from './hardQuestionBasisFields';
 import { hardQuestionField, type HardQuestionFieldObservations } from './hardQuestionFieldAction';
 import { resolveHardQuestionPlacementReview } from './hardQuestionPlacementChoice';
+import { HARD_QUESTION_REORDER } from './hardQuestionRankOrder';
 import { hardQuestionThemeListPath } from './hardQuestionThemeLists';
 import { resolveHardQuestionThemeOrderReview, type HardQuestionThemeOrderChoices } from './hardQuestionThemeOrderReview';
 import { liveSubmittedWork, sameLiveAtomicProof } from './liveSubmittedWork';
@@ -1235,11 +1236,13 @@ export class EditorController {
     else this.atomicPending.delete(request.id);
     if (request.state === 'cancelled' && request.cancelledByAction) {
       const priorId = request.predecessor;
+      const separateRankAnswer = request.atomic?.kind === HARD_QUESTION_REORDER && this.result
+        && this.result.operationId !== request.id && this.session.checkpoint().pending[this.result.operationId];
       if (isLiveWholeAction(request) && priorId && this.session.checkpoint().pending[priorId]) {
         const requests = await this.options.commits?.list(); this.assertCurrent();
         const prior = requests?.find(record => record.id === priorId && ['refused', 'conflict'].includes(record.state));
         this.result = prior?.result ?? null;
-      } else if (!isRetiredActionDependent(request) || this.result?.operationId === request.id) {
+      } else if (!separateRankAnswer && (!isRetiredActionDependent(request) || this.result?.operationId === request.id)) {
         this.result = null;
       }
     }
