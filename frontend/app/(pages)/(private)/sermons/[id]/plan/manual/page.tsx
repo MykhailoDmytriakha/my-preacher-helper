@@ -11,6 +11,7 @@ import { ProgressSidebar } from "@/components/plan/ProgressSidebar";
 import { RecordUnavailable } from "@/components/RecordUnavailable";
 import { OutlineWriteRecovery } from '@/components/sermon/OutlineWriteRecovery';
 import { SermonDetailSkeleton } from "@/components/skeletons/SermonDetailSkeleton";
+import hoverActions from "@/components/ui/HoverActions.module.css";
 import { DataDocumentProvider, useDataEngine } from '@/data-engine/react.client';
 import { useDraftQuestion } from "@/hooks/useDurableDraft";
 import { useRouteId } from "@/hooks/useRouteId";
@@ -163,7 +164,7 @@ const ManualPointCard = ({ point, index, section, conspectus, onAuthorCell, text
 
   return (
     <div className="h-full rounded-lg border bg-white p-4 shadow-sm dark:bg-gray-800">
-      <h3 className={`mb-2 flex items-center justify-between gap-2 text-lg font-semibold ${tone.text}`}>
+      <h3 className={`mb-2 flex items-center justify-between gap-2 text-lg font-semibold ${tone.text} ${hoverActions.row}`}>
         <span className="flex min-w-0 flex-1 items-baseline gap-1">
           <span className="shrink-0 opacity-60">{index + 1}.</span>
           {readOnly ? <span className="min-w-0 truncate px-1">{point.text}</span> : <EditableTitle
@@ -196,6 +197,7 @@ const ManualPointCard = ({ point, index, section, conspectus, onAuthorCell, text
           <DeleteNodeButton
             disabled={conspectus.busyNodeIds.size > 0}
             title={t("plan.deletePoint")}
+            className={editingIds[point.id] ? undefined : hoverActions.actions}
             armedTitle={t("plan.deletePointConfirm")}
             armedLabel={t("plan.deleteConfirm")}
             onDelete={() => void conspectus.deletePoint(point.id)}
@@ -213,7 +215,7 @@ const ManualPointCard = ({ point, index, section, conspectus, onAuthorCell, text
             {node.kind === "subPoint" && (
               // The sub-point's heading row has the point's own frame: title left, the same
               // actions right at the same size — whichever mode leaves out the generate button.
-              <h4 className={`mb-2 flex items-center justify-between gap-2 text-base font-semibold ${tone.text}`}>
+              <h4 className={`mb-2 flex items-center justify-between gap-2 text-base font-semibold ${tone.text} ${hoverActions.row}`}>
                 <span className="flex min-w-0 flex-1 items-baseline gap-1">
                   <span className="shrink-0 opacity-60">{node.label}</span>
                   {readOnly ? <span className="min-w-0 truncate px-1">{node.heading}</span> : <EditableTitle
@@ -227,6 +229,7 @@ const ManualPointCard = ({ point, index, section, conspectus, onAuthorCell, text
                   <DeleteNodeButton
                     disabled={conspectus.busyNodeIds.size > 0}
                     title={t("plan.deleteSubPoint")}
+                    className={editingIds[node.id] ? undefined : hoverActions.actions}
                     armedTitle={t("plan.deleteSubPointConfirm")}
                     armedLabel={t("plan.deleteConfirm")}
                     onDelete={() => void conspectus.deleteSubPoint(point.id, node.id)}

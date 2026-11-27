@@ -121,6 +121,7 @@ export const DeleteNodeButton = ({
   onDelete,
   compact = false,
   disabled = false,
+  className = "",
 }: {
   title: string;
   /** The full consequence — what will be lost or moved. Tooltip and screen reader. */
@@ -130,6 +131,7 @@ export const DeleteNodeButton = ({
   onDelete: () => void;
   compact?: boolean;
   disabled?: boolean;
+  className?: string;
 }) => {
   const [isArmed, setIsArmed] = useState(false);
 
@@ -150,7 +152,7 @@ export const DeleteNodeButton = ({
       }}
       onBlur={() => setIsArmed(false)}
       onMouseLeave={() => setIsArmed(false)}
-      className={`inline-flex shrink-0 items-center gap-1.5 self-center rounded-md text-sm font-medium transition-colors ${sizeClasses} ${
+      className={`inline-flex shrink-0 items-center gap-1.5 self-center rounded-md text-sm font-medium transition-colors ${sizeClasses} ${className} ${
         isArmed
           ? "bg-red-600 text-white hover:bg-red-700"
           : "text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-200"

@@ -1405,6 +1405,34 @@ it.each(['stay', 'close'] as const)('offers the exact orphan reserve when its In
   }
 });
 
+it('reveals each delete with its heading until that cell opens for writing', async () => {
+  localStorage.clear();
+  mockSermon = sermon({ p1: 'Opening.', child: 'Child paragraph.' });
+  mockSermon.outline!.introduction[0].subPoints = [{ id: 'child', text: 'Child heading', position: 0 }];
+  const view = await render();
+  try {
+    const deletePoint = screen.getByTitle('plan.deletePoint');
+    const deleteChild = screen.getByTitle('plan.deleteSubPoint');
+    expect(deletePoint.closest('h3')).toHaveClass('row');
+    expect(deleteChild.closest('h4')).toHaveClass('row');
+    expect(deletePoint).toHaveClass('actions');
+    expect(deleteChild).toHaveClass('actions');
+
+    fireEvent.click(screen.getAllByTitle('plan.editMode')[0]);
+    expect(deletePoint).not.toHaveClass('actions');
+    expect(deleteChild).toHaveClass('actions');
+
+    fireEvent.click(deleteChild);
+    const armed = screen.getByTitle('plan.deleteSubPointConfirm');
+    expect(armed).toBe(deleteChild);
+    fireEvent.blur(armed);
+    expect(deleteChild).toHaveAttribute('title', 'plan.deleteSubPoint');
+    expect(harness.server.value?.outline).toMatchObject({ introduction: [{ subPoints: [{ id: 'child' }] }] });
+  } finally {
+    view.unmount();
+  }
+});
+
 it('can delete the whole point after deleting one of its children', async () => {
   localStorage.clear();
   mockSermon = sermon({ p1: 'Opening.', child: 'Child paragraph.' });
