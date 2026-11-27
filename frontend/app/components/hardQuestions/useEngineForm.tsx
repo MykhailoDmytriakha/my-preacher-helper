@@ -95,13 +95,14 @@ const themeFieldLabels: Readonly<Record<string, string>> = {
 function hardQuestionComparison(comparison: ReturnType<typeof useDataForm>['comparison'],
   t: ReturnType<typeof useTranslation>['t']): TextComparison | undefined {
   if (comparison?.basisScripture) {
-    const { mine, stored, otherFields, removed } = comparison.basisScripture;
+    const { mine, stored, otherFields, refsUnderReview, removed } = comparison.basisScripture;
     const places = t('hardQuestions.basis.places');
     const text = (side: 'mine' | 'stored', refs: string[]) => {
       const refsText = refs.join('\n') || t('dataSync.emptyField');
       if (!otherFields?.length) return refsText;
-      return [`${places}\n${refsText}`, ...otherFields.map(field => {
-        const label = t(field.field === 'title' ? 'hardQuestions.basis.fieldTitle' : 'hardQuestions.basis.fieldText');
+      return [...(refsUnderReview === false ? [] : [`${places}\n${refsText}`]), ...otherFields.map(field => {
+        const labels = { title: 'hardQuestions.basis.fieldTitle', text: 'hardQuestions.basis.fieldText', label: 'hardQuestions.basis.fieldLabel' } as const;
+        const label = t(labels[field.field]);
         return `${label}\n${field[side] || t('dataSync.emptyField')}`;
       })].join('\n\n');
     };

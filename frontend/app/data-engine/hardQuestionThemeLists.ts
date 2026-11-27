@@ -3,7 +3,7 @@ import { standsOnScripture } from '@/utils/hardQuestions';
 
 import { equalValues, object } from './fieldValues';
 
-import type { ConflictDetail, FieldValue } from './types';
+import type { FieldValue } from './types';
 
 export const HARD_QUESTION_BASIS_SCRIPTURE = 'hard-question-basis-scripture';
 
@@ -17,11 +17,7 @@ export function hardQuestionBasisScriptureId(path: readonly string[]): string | 
   }
 }
 
-export function basisScriptureConflictId({ code, path }: ConflictDetail): string | undefined {
-  if (code === HARD_QUESTION_BASIS_SCRIPTURE) return hardQuestionBasisScriptureId(path);
-}
-
-function hasScripture(value: unknown): boolean {
+export function hasBasisScripture(value: unknown): boolean {
   return Array.isArray(value) && value.every((item): item is string => typeof item === 'string')
     && APP_LOCALES.some(locale => standsOnScripture(value, locale));
 }
@@ -29,13 +25,13 @@ function hasScripture(value: unknown): boolean {
 /** Two individually valid edits can remove every place when combined. */
 export function reviewMergedBasisScripture(path: readonly string[], mine: FieldValue, stored: FieldValue, merged: FieldValue): boolean {
   return Boolean(hardQuestionBasisScriptureId(path))
-    && hasScripture(mine.value) && hasScripture(stored.value) && !hasScripture(merged.value);
+    && hasBasisScripture(mine.value) && hasBasisScripture(stored.value) && !hasBasisScripture(merged.value);
 }
 
 /** Existing rows can keep their original data even while other rows are edited or rearranged. */
 export function keepsBasisScripture(previous: unknown, proposed: unknown): boolean {
   if (!Array.isArray(proposed)) return true;
   const old = Array.isArray(previous) ? previous.filter(object) : [];
-  return proposed.every(row => object(row) && (hasScripture(row.scriptureRefs)
+  return proposed.every(row => object(row) && (hasBasisScripture(row.scriptureRefs)
     || old.some(opening => opening.id === row.id && equalValues(opening, row))));
 }

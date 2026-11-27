@@ -44,8 +44,8 @@ import { firstGroupMeetingReview } from './groupFirstMeeting';
 import { GROUP_MEETING_SLOT as groupMeetingAutosaveSlot, groupMeetingRows as meetingRows, normalizeGroupMeetingDraft as normalizeMeetingDraft } from './groupMeetingAutosave';
 import { captureGroupStepPlacement as captureGroupPlacement, projectCapturedGroupStep as projectGroupPlacement } from './groupStepPlacement';
 import { readGroupTextReview } from './groupTextReview';
+import { hardQuestionBasisConflict, hasHardQuestionBasisReview } from './hardQuestionBasisFields';
 import { hardQuestionField, hasHardQuestionListReview } from './hardQuestionFieldAction';
-import { basisScriptureConflictId } from './hardQuestionThemeLists';
 import { readHardQuestionThemeOrderReview as readThemeOrderReview, type HardQuestionThemeOrderChoices } from './hardQuestionThemeOrderReview';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
 import { ARCHIVED_COLLECTIONS, isEngineOwnedLegacyMutation, isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
@@ -210,14 +210,15 @@ export function readHardQuestionThemeOrderReview(checkpoint: SessionCheckpoint) 
 }
 export function readHardQuestionBasisConflict(checkpoint: SessionCheckpoint, result?: CommandResult | null) {
   if (checkpoint.confirmed.resource.collection !== 'hardQuestionThemes') return;
-  const id = checkpoint.conflicts.map(basisScriptureConflictId).find(basisId => basisId !== undefined);
+  const id = checkpoint.conflicts.map(hardQuestionBasisConflict).find(Boolean)?.id;
   if (!id) return;
   const requestId = result?.kind === 'conflict' && checkpoint.pending[result.operationId]
-    && result.conflicts.some(conflict => basisScriptureConflictId(conflict) === id) ? result.operationId : undefined;
+    && result.conflicts.some(conflict => hardQuestionBasisConflict(conflict)?.id === id) ? result.operationId : undefined;
   return { id, requestId };
 }
-export function waitsForHardQuestionListReview(checkpoint: SessionCheckpoint) {
-  return hasHardQuestionListReview(checkpoint.confirmed.resource.collection, checkpoint.conflicts);
+export function waitsForHardQuestionExactReview(checkpoint: SessionCheckpoint) {
+  const { collection } = checkpoint.confirmed.resource;
+  return hasHardQuestionListReview(collection, checkpoint.conflicts) || hasHardQuestionBasisReview(collection, checkpoint.conflicts);
 }
 export function hasHardQuestionFieldConflict(checkpoint: SessionCheckpoint) {
   return checkpoint.conflicts.some(({ path }) => hardQuestionField(checkpoint.confirmed.resource.collection, path));
@@ -892,8 +893,8 @@ export function useDocumentActions() {
         if (!exactField && (scope?.records ?? waiting.map(({ record }) => record)).some(({ checkpoint }) => waitsForStudyNoteReferenceReview(checkpoint))) {
           throw Object.assign(new Error('Review the note references before deciding'), { code: 'decision-changed' });
         }
-        if ((scope?.records ?? waiting.map(({ record }) => record)).some(({ checkpoint }) => waitsForHardQuestionListReview(checkpoint))) {
-          throw Object.assign(new Error('Review the question list in its editor before deciding'), { code: 'decision-changed' });
+        if ((scope?.records ?? waiting.map(({ record }) => record)).some(({ checkpoint }) => waitsForHardQuestionExactReview(checkpoint))) {
+          throw Object.assign(new Error('Open the editor to review the exact comparison'), { code: 'decision-changed' });
         }
         if (scope && choice === 'theirs' && !exactField) {
           // Modern copies settle through the same request-scoped projection as screen drafts.
@@ -2064,12 +2065,12 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
         ...(action && { metadataTime: action.documentMetadata.time }) })),
     acceptRemote: () => {
       const comparison = target?.state?.comparison;
-      const time = comparison?.hardQuestionListItems && owner && current() ? actionClock.capture(owner) ?? null : undefined;
+      const time = (comparison?.hardQuestionListItems || comparison?.basisScripture) && owner && current() ? actionClock.capture(owner) ?? null : undefined;
       return run(form => form.resolve('remote', { expectedComparison: comparison, metadataTime: time }));
     },
     discardStageAndAcceptRemote: () => {
       const comparison = target?.state?.comparison;
-      const time = comparison?.hardQuestionListItems && owner && current() ? actionClock.capture(owner) ?? null : undefined;
+      const time = (comparison?.hardQuestionListItems || comparison?.basisScripture) && owner && current() ? actionClock.capture(owner) ?? null : undefined;
       return run(form => form.resolve('remote', { discardStage: true, expectedComparison: comparison, metadataTime: time }));
     },
     resolveOutlineReview: (placement: 'local' | 'remote', titles: readonly OutlineTitleDecision[]) =>

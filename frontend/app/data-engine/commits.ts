@@ -36,6 +36,7 @@ import { matchingGroupFlowCopySources, matchingGroupFlowRetirements } from './gr
 import { captureMeetingFieldActions, GROUP_MEETING_FIELD_POLICY, matchingMeetingFieldActions } from './groupMeetingFieldAction';
 import { groupMeetingReviewForSave } from './groupMeetingReview';
 import { groupStepPlacementPredecessor, groupStepWitness, projectGroupStepOnDocument } from './groupStepPlacement';
+import { captureHardQuestionBasisFields, HARD_QUESTION_BASIS_POLICY } from './hardQuestionBasisFields';
 import { captureHomileticMoves, captureHomileticTitles, matchingHomileticMoves, matchingHomileticPositionReviews, matchingHomileticTitles, restoreHomileticOpenings } from './homileticPlanCapture';
 import { seriesCommandParticipant } from './membershipIntent';
 import { outlinePlacementField } from './outlinePlacementResource';
@@ -74,6 +75,7 @@ import type { DocumentFieldObservation, PreparationTextObservations, SermonChurc
 import type { ExegeticalPointStamp } from './exegeticalPointAction';
 import type { GroupMeetingFieldActions, GroupMeetingFieldCaptures } from './groupMeetingFieldAction';
 import type { GroupTextReviewStage } from './groupTextReview';
+import type { HardQuestionBasisActions } from './hardQuestionBasisFields';
 import type { HardQuestionFieldObservations } from './hardQuestionFieldAction';
 import type { HomileticMoveActions, HomileticMoveGesture, HomileticPositionReviews, HomileticTitleActions } from './homileticPlan';
 import type { SeriesMembershipCapture } from './membershipIntent';
@@ -199,6 +201,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   sermonChurchFill?: SermonChurchFill;
   seriesFieldActions?: SeriesFieldObservations;
   hardQuestionFieldActions?: HardQuestionFieldObservations;
+  hardQuestionBasisFieldActions?: HardQuestionBasisActions;
   prayerTextActions?: PrayerTextObservations;
   groupTitleAction?: DocumentFieldObservation;
   groupStatusAction?: DocumentFieldObservation;
@@ -362,6 +365,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.prayerTextActions ?? null, incoming.prayerTextActions ?? null)
     || !equalValues(current.seriesFieldActions ?? null, incoming.seriesFieldActions ?? null)
     || !equalValues(current.hardQuestionFieldActions ?? null, incoming.hardQuestionFieldActions ?? null)
+    || !equalValues(current.hardQuestionBasisFieldActions ?? null, incoming.hardQuestionBasisFieldActions ?? null)
     || !equalValues(current.seriesMembership ?? null, incoming.seriesMembership ?? null)
     || !equalValues(current.groupTitleAction ?? null, incoming.groupTitleAction ?? null)
     || !equalValues(current.groupStatusAction ?? null, incoming.groupStatusAction ?? null)
@@ -489,6 +493,7 @@ function pendingRowFields(record: CommitRequest) {
     ...pendingRowDetailRebases(record, record.serviceOrderStepTitleActions, SERVICE_ORDER_STEP_TITLE_POLICY),
     ...pendingRowDetailRebases(record, record.serviceOrderStepBodyActions, SERVICE_ORDER_STEP_BODY_POLICY),
     ...pendingRowDetailRebases(record, record.serviceOrderStepScriptureActions, SERVICE_ORDER_STEP_SCRIPTURE_POLICY),
+    ...pendingRowDetailRebases(record, record.hardQuestionBasisFieldActions, HARD_QUESTION_BASIS_POLICY),
     ...pendingRowDetailRebases(record, record.councilAssemblyActions, COUNCIL_ASSEMBLY_POLICY),
     ...pendingRowDetailRebases(record, record.councilTopicKindActions, COUNCIL_TOPIC_KIND_POLICY),
     ...pendingAutosaveRowFieldRebases(record),
@@ -863,7 +868,8 @@ export class CommitQueue {
     const assembly = editorAction?.kind === 'council-assembly' ? editorAction.flag : undefined;
     const topicKind = editorAction?.kind === 'council-topic-kind' ? editorAction.topicKind : undefined;
     const confirmQuestionList = editorAction?.kind === 'document-metadata' && editorAction.hardQuestionFieldReview?.confirmedLists;
-    if (!confirmQuestionList && !step && !assembly && !topicKind && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'service-order-placement' && editorAction?.kind !== 'service-order-step-placement' && editorAction?.kind !== 'outline-point-placement' && editorAction?.kind !== 'outline-subpoint-placement' && editorAction?.kind !== 'group-flow-step-placement' && editorAction?.kind !== 'council-topic-placement' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'prayer-text' && editorAction?.kind !== 'study-note-title' && editorAction?.kind !== 'study-note-type' && editorAction?.kind !== 'sermon-plan-mode' && editorAction?.kind !== 'comment-kind' && editorAction?.kind !== 'comment-place' && editorAction?.kind !== 'document-tags' && editorAction?.kind !== 'plan-template-name' && editorAction?.kind !== 'tag-color' && editorAction?.kind !== 'prayer-status' && editorAction?.kind !== 'sermon-source-note-links'
+    const confirmBasisFields = editorAction?.kind === 'document-metadata' && editorAction.hardQuestionBasisReview?.fields.length;
+    if (!confirmBasisFields && !confirmQuestionList && !step && !assembly && !topicKind && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'service-order-placement' && editorAction?.kind !== 'service-order-step-placement' && editorAction?.kind !== 'outline-point-placement' && editorAction?.kind !== 'outline-subpoint-placement' && editorAction?.kind !== 'group-flow-step-placement' && editorAction?.kind !== 'council-topic-placement' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'prayer-text' && editorAction?.kind !== 'study-note-title' && editorAction?.kind !== 'study-note-type' && editorAction?.kind !== 'sermon-plan-mode' && editorAction?.kind !== 'comment-kind' && editorAction?.kind !== 'comment-place' && editorAction?.kind !== 'document-tags' && editorAction?.kind !== 'plan-template-name' && editorAction?.kind !== 'tag-color' && editorAction?.kind !== 'prayer-status' && editorAction?.kind !== 'sermon-source-note-links'
       && !commentCompanions?.commentKindAction && !commentCompanions?.commentPlaceAction
       && !frozenOptions?.transfer && !frozenOptions?.noteContent && !intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
     const baseline = clone(intent.confirmed);
@@ -1009,6 +1015,8 @@ export class CommitQueue {
       editorAction?.kind === 'account-preference' ? editorAction.fields : undefined,
       headerReview, editorAction?.kind === 'document-metadata' ? editorAction.seriesFieldReview : undefined,
       editorAction?.kind === 'document-metadata' ? editorAction.hardQuestionFieldReview : undefined);
+    const hardQuestionBasisFieldActions = captureHardQuestionBasisFields(baseline, predecessor, intent.draft, metadataTime, records,
+      editorAction?.kind === 'document-metadata' ? editorAction.hardQuestionBasisReview : undefined);
     const metadataFields = textRetry
       ? { ...capturedMetadata, ...capturedSermonTextRetry(textRetry,
         'sermonPreparationTextActions' in capturedMetadata ? capturedMetadata.sermonPreparationTextActions : undefined) }
@@ -1068,6 +1076,7 @@ export class CommitQueue {
       ...prayerStatus,
       ...(prayerTextActions && { prayerTextActions }),
       ...metadataFields,
+      ...(hardQuestionBasisFieldActions && { hardQuestionBasisFieldActions }),
       ...(churchRecovery && { sermonChurchAction: churchRecovery.observation, sermonChurchFill: churchRecovery.fill }),
       ...(preparationChecks && { sermonPreparationCheckActions: preparationChecks }),
       ...(exegeticalPlanActions && { exegeticalPlanActions }),
@@ -1789,6 +1798,8 @@ export class CommitQueue {
       else if (stepScripture && matchesServiceOrderStep(command.changes, SERVICE_ORDER_STEP_SCRIPTURE_LIST, stepScripture.scriptureRefs)) {
         command.serviceOrderStepScriptureActions = stepScripture;
       }
+      const basisFields = matchingRowDetailActions(command.changes, record.hardQuestionBasisFieldActions, HARD_QUESTION_BASIS_POLICY);
+      if (basisFields) command.hardQuestionBasisFieldActions = basisFields;
       const exegeticalActions = matchingExegeticalPointActions(command.changes, record.exegeticalPlanActions);
       if (exegeticalActions) command.exegeticalPlanActions = exegeticalActions;
       const homileticTitles = matchingHomileticTitles(command.changes, record.homileticTitleActions);

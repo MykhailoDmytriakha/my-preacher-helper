@@ -5,8 +5,8 @@ import { AUTHORED_LIST_PROJECTION, isAuthoredListComparison } from './authoredSt
 import { manualSeriesTextChoiceFields } from './documentTextChoice';
 import { object } from './fieldValues';
 import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
+import { HARD_QUESTION_BASIS_FIELDS, hardQuestionBasisConflict, readBasisReferenceVersions, type HardQuestionBasisField } from './hardQuestionBasisFields';
 import { hardQuestionField, hardQuestionListVersion, readHardQuestionListVersions, type HardQuestionField, type HardQuestionListQuestions } from './hardQuestionFieldAction';
-import { basisScriptureConflictId, hardQuestionBasisScriptureId } from './hardQuestionThemeLists';
 import { projectHomileticReview, reviewedHomileticList } from './homileticPlanChoice';
 import { exactManualWords, manualChoiceFrames, replaySavedChoiceDelta } from './manualChoice';
 import { sameManualSelection } from './manualScope';
@@ -26,12 +26,14 @@ import type { ConflictDetail, DocumentData, ResourceSnapshot } from './types';
 
 export interface ManualComparison { identity: string; requestId: string; conflictPaths: readonly (readonly string[])[]; mine: DocumentData; stored: ResourceSnapshot; remotePreview?: DocumentData; canKeepLocal?: false; thoughtText?: { id: string; mine: string; stored: string }; kind?: 'first-group-meeting' | 'returned-sermon-title' | 'returned-sermon-verse' | 'sermon-church'; preparationField?: ReturnType<typeof reviewedSermonPreparationField>; returnedSeriesFields?: readonly string[]; hardQuestionFields?: readonly HardQuestionField[]; hardQuestionListItems?: HardQuestionListQuestions; basisScripture?: BasisScriptureComparison; outlineParent?: NonNullable<ReturnType<typeof readOutlineParentComparison>> }
 
-type BasisTextField = 'title' | 'text';
+type BasisTextField = Exclude<HardQuestionBasisField, 'scriptureRefs'>;
 type BasisScriptureComparison = {
   id: string;
   mine: string[];
   stored: string[];
   otherFields: { field: BasisTextField; mine: string; stored: string }[];
+  refsUnderReview?: false;
+  referenceItems?: readonly string[];
   removed?: true;
 };
 
@@ -55,13 +57,19 @@ function basisScriptureWords(row: DocumentData | undefined): string[] {
 
 function compareBasisScripture(id: string, mine: DocumentData, stored: DocumentData, conflicts: readonly ConflictDetail[]): BasisScriptureComparison {
   const local = basisRow(mine, id), saved = basisRow(stored, id);
-  const otherFields = (['title', 'text'] as const).flatMap(field => {
+  const refs = readBasisReferenceVersions(conflicts, mine, stored, id);
+  const hasConflict = (field: HardQuestionBasisField) => conflicts.some(item => equalValues(item.path, ['bases', `id:${id}`, field]));
+  const otherFields = HARD_QUESTION_BASIS_FIELDS.flatMap(field => {
+    if (field === 'scriptureRefs') return [];
     const words = local?.[field], storedWords = saved?.[field];
-    const show = saved ? conflicts.some(item => equalValues(item.path, ['bases', `id:${id}`, field])) : typeof words === 'string' && Boolean(words);
+    const show = saved ? hasConflict(field) : typeof words === 'string' && Boolean(words);
     return show
       ? [{ field, mine: typeof words === 'string' ? words : '', stored: typeof storedWords === 'string' ? storedWords : '' }] : [];
   });
-  return { id, mine: basisScriptureWords(local), stored: basisScriptureWords(saved), otherFields, ...(!saved && { removed: true }) };
+  return { id, mine: refs ? basisScriptureWords({ scriptureRefs: refs.local.value ?? null }) : basisScriptureWords(local),
+    stored: refs ? basisScriptureWords({ scriptureRefs: refs.remote.value ?? null }) : basisScriptureWords(saved), otherFields,
+    ...(refs && { referenceItems: refs.undecided }),
+    ...(saved && !hasConflict('scriptureRefs') && { refsUnderReview: false as const }), ...(!saved && { removed: true }) };
 }
 
 /** Only an actual answered ancestor of this selected field may explain its two versions. */
@@ -137,15 +145,13 @@ export function manualComparison(form: ReturnType<ManualScope['getState']>, pare
           return field && form.record.selection.some(selected => equalValues(selected, path))
             && !sameManualSelection(mine, stored.value, path) ? [field] : [];
         }) : undefined;
-      const scriptureConflict = exact && request.baseline.metadata?.generation === stored.metadata?.generation
-        ? conflicts.find(conflict => {
-          const id = basisScriptureConflictId(conflict);
-          return id && form.record.selection.some(selected => equalValues(selected, ['bases', { id }, 'scriptureRefs']));
-        }) : undefined;
-      const basisScripture = scriptureConflict
-        ? compareBasisScripture(hardQuestionBasisScriptureId(scriptureConflict.path)!, reviewed ?? mine, stored.value,
-          mergeDocumentFields(basis.value, reviewed ?? mine, stored.value).conflicts)
-        : undefined;
+      const basisConflict = exact && request.baseline.metadata?.generation === stored.metadata?.generation
+        ? conflicts.map(hardQuestionBasisConflict).find(target => target && form.record.selection.some(
+          selected => equalValues(selected, ['bases', { id: target.id }, target.field]))) : undefined;
+      const basisScripture = basisConflict
+        ? compareBasisScripture(basisConflict.id, reviewed ?? mine, stored.value, [
+          ...conflicts, ...mergeDocumentFields(basis.value, reviewed ?? mine, stored.value).conflicts,
+        ]) : undefined;
       const exactPreparationText = stored.resource.collection === 'sermons' && request.baseline.metadata
         && request.baseline.metadata.generation === stored.metadata?.generation
         && conflicts.some(({ path }) => preparationTextField(path) !== undefined

@@ -30,6 +30,7 @@ import { collectionHeadRef } from './feed';
 import { firstGroupMeetingReview } from './groupFirstMeeting';
 import { GROUP_MEETING_SAVE_DELAY, GROUP_MEETING_SLOT, readyMeetingAutosave } from './groupMeetingAutosave';
 import { readGroupFlowTextChoice } from './groupTextReview';
+import { hasHardQuestionBasisReview } from './hardQuestionBasisFields';
 import { hasHardQuestionListReview } from './hardQuestionFieldAction';
 import { readHardQuestionThemeOrderReview, type HardQuestionThemeOrderChoices } from './hardQuestionThemeOrderReview';
 import { HOMILETIC_POSITION_PROJECTION, HOMILETIC_POSITION_REVIEW } from './homileticPlan';
@@ -1747,8 +1748,9 @@ export class DataEngine {
     if (answered.some(request => request.result?.kind === 'conflict' && hasOutlineParentChoice(resource.collection, request.result.conflicts))) {
       throw Object.assign(new Error('Review the subpoint placement in its editor before deciding'), { code: 'decision-changed' });
     }
-    if (answered.some(request => request.result?.kind === 'conflict' && hasHardQuestionListReview(resource.collection, request.result.conflicts))) {
-      throw Object.assign(new Error('Review the question list in its editor before deciding'), { code: 'decision-changed' });
+    if (answered.some(request => request.result?.kind === 'conflict'
+      && (hasHardQuestionListReview(resource.collection, request.result.conflicts) || hasHardQuestionBasisReview(resource.collection, request.result.conflicts)))) {
+      throw Object.assign(new Error('Open the editor to review the exact comparison'), { code: 'decision-changed' });
     }
     if (answered.length) {
       const sources = await this.manualChoices(owner, resource, requests);
@@ -3913,7 +3915,10 @@ export class DataEngine {
         const hardQuestionReview = comparison && (comparison.hardQuestionFields || comparison.basisScripture) ? {
           scopeId: shown.record.scopeId,
           basis: comparison.basisScripture && { id: comparison.basisScripture.id,
-            fields: comparison.basisScripture.otherFields.map(item => item.field), removed: comparison.basisScripture.removed },
+            fields: [...comparison.basisScripture.otherFields.map(item => item.field),
+              ...(comparison.basisScripture.refsUnderReview === false ? [] : ['scriptureRefs' as const])],
+            original: request.hardQuestionBasisFieldActions ?? {}, referenceItems: comparison.basisScripture.referenceItems,
+            removed: comparison.basisScripture.removed },
           text: comparison.hardQuestionFields && {
             fields: choice === 'local' ? comparison.hardQuestionFields : comparison.hardQuestionFields.filter(field =>
               Object.hasOwn(comparison.hardQuestionListItems ?? {}, field)),
@@ -4144,7 +4149,7 @@ export class DataEngine {
           return;
         }
         const time = options?.metadataTime;
-        const action = time !== undefined && (choice === 'local' || options?.expectedComparison?.hardQuestionListItems)
+        const action = time !== undefined && (choice === 'local' || options?.expectedComparison?.hardQuestionListItems || options?.expectedComparison?.basisScripture)
           ? { kind: 'document-metadata', time } as const : undefined;
         if (exact && scope) await finishExactChoice(choice, scope, exact, updating, assertComparison, action, options?.titles);
         else await finishChoice(choice, scope, staged, updating, assertComparison, Boolean(expected), action, options?.titles);

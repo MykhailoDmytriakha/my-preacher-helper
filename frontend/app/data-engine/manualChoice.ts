@@ -12,11 +12,12 @@ import { writeField } from './fieldValues';
 import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
 import { captureGroupMeetingReview } from './groupMeetingReview';
 import { captureGroupStepPlacement, carryAnchoredDraftChronology, groupPlacementSteps, mergeEditsAfterAnchoredPlacement, mergeGroupFlowRebase, projectGroupStepOnDocument } from './groupStepPlacement';
+import { BASIS_FIELD_QUEUED, BASIS_FIELD_SETTLED, BASIS_REFERENCE_PROJECTION, hardQuestionBasisConflict, hardQuestionBasisField, readBasisReferenceVersions, readHardQuestionBasisField, writeBasisReferences, type HardQuestionBasisReview } from './hardQuestionBasisFields';
 import { hardQuestionFieldTargets, hardQuestionReviewFrames, hardQuestionField, hardQuestionListVersion, readHardQuestionListVersions, type HardQuestionFieldReview } from './hardQuestionFieldAction';
-import { basisScriptureConflictId, keepsBasisScripture } from './hardQuestionThemeLists';
+import { keepsBasisScripture } from './hardQuestionThemeLists';
 import { projectHomileticReview, reviewedHomileticList } from './homileticPlanChoice';
 import { chooseLocalPlacement } from './localPlacementChoice';
-import { projectManualSelection, type ManualPath } from './manualScope';
+import { projectManualSelection, sameManualSelection, type ManualPath } from './manualScope';
 import { projectOutlineParentChoice, type OutlineTitleDecision } from './outlineParentChoice';
 import { projectResourceOutlinePoint } from './outlinePointPlacement';
 import { chooseLocalPreachDateEdits, isOrderedPreachDateField, preachDateChoiceFrames } from './preachDateChoice';
@@ -90,8 +91,8 @@ export function exactManualRequest(stage: ManualStage | undefined, checkpoint: S
           : ({ path }: ConflictDetail) => Boolean(hardQuestionField(record.resource.collection, path));
       const basisReview = record.resource.collection === 'hardQuestionThemes' && request.result?.kind === 'conflict'
         && request.result.conflicts.some(conflict => {
-          const id = basisScriptureConflictId(conflict);
-          return id && record.selection.some(path => equalValues(path, ['bases', { id }, 'scriptureRefs']));
+          const target = hardQuestionBasisConflict(conflict);
+          return target && record.selection.some(path => equalValues(path, ['bases', { id: target.id }, target.field]));
         });
       const savedFieldReview = basisReview || (returnedField && request.result?.kind === 'conflict'
         && request.result.conflicts.some(conflict => returnedField(conflict)
@@ -101,7 +102,7 @@ export function exactManualRequest(stage: ManualStage | undefined, checkpoint: S
         ? request.retentionScope ?? request.editorId : request.editorId;
       const savedFieldForm = savedFieldReview && readManualScopeIdentity(fieldScope);
       const openFieldForm = savedFieldReview && readManualScopeIdentity(record.scopeId);
-      const recoveredQuestionForm = record.resource.collection === 'hardQuestions' && request.retentionScope === fieldScope
+      const recoveredQuestionForm = (record.resource.collection === 'hardQuestions' || basisReview) && request.retentionScope === fieldScope
         && record.recoverySources?.some(source => source.id === fieldScope);
       const ownsFieldForm = savedFieldForm && openFieldForm && savedFieldForm.slot === openFieldForm.slot
         && editorSlot(savedFieldForm.parentEditorId) === editorSlot(openFieldForm.parentEditorId)
@@ -123,7 +124,7 @@ export interface ExactManualChoice {
   titles?: readonly OutlineTitleDecision[];
   choiceTime?: ActionTime | null;
   hardQuestionReview?: { scopeId: string; text?: HardQuestionFieldReview;
-    basis?: { id: string; fields: readonly ('text' | 'title')[]; removed?: true } };
+    basis?: HardQuestionBasisReview & { removed?: true } };
   request: CommitRequest;
   stored: ResourceSnapshot;
   value: DocumentData;
@@ -136,6 +137,35 @@ function afterChoice(confirmed: ResourceSnapshot, draft: DocumentData | null, ge
     pending: {}, conflicts: [], remoteCandidate: null };
 }
 
+function basisChoiceFrames(basis: ResourceSnapshot, reviewed: DocumentData | null, stored: ResourceSnapshot, conflicts: readonly ConflictDetail[]) {
+  if (!basis.value || !reviewed || !stored.value || basis.metadata?.generation !== stored.metadata?.generation) {
+    return { basis, reviewed, conflicts };
+  }
+  let opening = basis.value, mine = reviewed;
+  const pending = conflicts.filter(conflict => {
+    if (conflict.code !== BASIS_FIELD_QUEUED && conflict.code !== BASIS_FIELD_SETTLED && conflict.code !== BASIS_REFERENCE_PROJECTION) return true;
+    const target = hardQuestionBasisField(conflict.path);
+    if (!target) return true;
+    const { id, field } = target;
+    const path: ManualPath = ['bases', { id }, field];
+    if (conflict.code === BASIS_REFERENCE_PROJECTION) {
+      if (!equalValues(readHardQuestionBasisField(mine, id, field), conflict.base)
+        || !equalValues(readHardQuestionBasisField(stored.value!, id, field), conflict.theirs)) return true;
+      mine = writeBasisReferences(mine, id, conflict.mine);
+      opening = projectManualSelection(opening, stored.value!, [path]);
+      return false;
+    }
+    if (sameManualSelection(mine, stored.value, path)) return false;
+    if (!equalValues(readHardQuestionBasisField(mine, id, field), conflict.mine)) return true;
+    if (conflict.code === BASIS_FIELD_SETTLED) mine = projectManualSelection(mine, opening, [path]);
+    else if (equalValues(readHardQuestionBasisField(stored.value!, id, field), conflict.theirs)) {
+      opening = projectManualSelection(opening, stored.value!, [path]);
+    } else return true;
+    return false;
+  });
+  return { basis: { ...basis, value: opening }, reviewed: mine, conflicts: pending };
+}
+
 export function manualChoiceFrames(request: CommitRequest, value: DocumentData, stored: ResourceSnapshot) {
   const prepared = request.initialized && request.command;
   const basis = prepared ? request.working : request.baseline;
@@ -144,7 +174,11 @@ export function manualChoiceFrames(request: CommitRequest, value: DocumentData, 
   const ordered = conflicts.filter(isOrderedSermonMetadata);
   if (ordered.length) return { ...sermonHeaderReviewFrames(basis, reviewed, stored, ordered, request.sermonChurchFill),
     conflicts: conflicts.filter(conflict => !isOrderedSermonMetadata(conflict)) };
-  if (hardQuestionFieldTargets(stored.resource.collection).length) return hardQuestionReviewFrames(basis, reviewed, stored, conflicts);
+  if (hardQuestionFieldTargets(stored.resource.collection).length) {
+    const question = hardQuestionReviewFrames(basis, reviewed, stored, conflicts);
+    return stored.resource.collection === 'hardQuestionThemes'
+      ? basisChoiceFrames(question.basis, question.reviewed, stored, question.conflicts) : question;
+  }
   return seriesReviewFrames(basis, reviewed, stored, conflicts);
 }
 
@@ -193,8 +227,11 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
     } else {
       const rebased = replaySavedChoiceDelta(stored.resource, basis.value, reviewed, stored.value);
       if (!rebased) throw Object.assign(new Error('The basis changed during review'), { code: 'decision-changed' });
-      const paths: ManualPath[] = ['scriptureRefs', ...fields].map(field => ['bases', { id }, field]);
-      const chosen = projectManualSelection(rebased, decision.choice === 'local' ? reviewed : stored.value, paths);
+      const paths: ManualPath[] = fields.map(field => ['bases', { id }, field]);
+      const versions = readBasisReferenceVersions(reviewedConflicts, reviewed, stored.value, id);
+      const selected = decision.choice === 'local' ? reviewed : stored.value;
+      const picked = versions ? writeBasisReferences(selected, id, versions[decision.choice]) : selected;
+      const chosen = projectManualSelection(rebased, picked, paths);
       draft = projectManualSelection(stored.value, chosen, decision.selection);
       if (!keepsBasisScripture(stored.value.bases, draft.bases)) {
         throw Object.assign(new Error('The basis needs a readable place of Scripture'), { code: 'decision-changed' });

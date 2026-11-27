@@ -14,7 +14,7 @@ import type { ConflictDetail, FieldChange, FieldValue } from './types';
 type Membership = { item: string; revision: number; time: ActionTime | null; operationId?: string; returned?: true };
 export type MembershipConfirmation = Pick<Membership, 'item' | 'time'>;
 type CarriedMembership = MembershipConfirmation & DocumentFieldStamp;
-type ListReview = { carried: readonly CarriedMembership[]; confirmed: readonly string[] };
+type ListReview = { carried: readonly CarriedMembership[]; confirmed: readonly string[]; confirmedOpening?: true };
 type Proof = { floor: number; changes: Membership[] };
 type MembershipWrite = { time: ActionTime | null; reaffirmed?: readonly MembershipConfirmation[]; carried?: readonly MembershipConfirmation[] };
 type ListPlan = { value: FieldValue; reaffirmed: MembershipConfirmation[] }
@@ -68,6 +68,7 @@ export function planHardQuestionList(change: FieldChange, stored: FieldValue, ra
   const history = new Map(changes.map(entry => [entry.item, entry]));
   const { opening: originalItems, removes, adds } = changesBetween([...opening], requested);
   const carried = new Map(review?.carried.map(item => [item.item, item]));
+  const reviewedOpening = new Set(review?.confirmedOpening ? review.confirmed : []);
   const rejected = new Set<string>();
   const uncertain: string[] = [];
   const reaffirmed: MembershipConfirmation[] = [];
@@ -79,7 +80,7 @@ export function planHardQuestionList(change: FieldChange, stored: FieldValue, ra
       if (changesSaved && previous?.returned) uncertain.push(item);
       continue;
     }
-    const observed = review ? carried.get(key) : action;
+    const observed = !review || reviewedOpening.has(item) ? action : carried.get(key);
     if (!observed) {
       // Reconfirm the affected item after the explicitly chosen opening became stale.
       if (changesSaved) uncertain.push(item);
@@ -114,6 +115,12 @@ export function planHardQuestionList(change: FieldChange, stored: FieldValue, ra
     return { review: true, ...(keep && { versions: { local: value, remote: keep, undecided: uncertain } }) } as const;
   }
   return { value, reaffirmed } as const;
+}
+
+export function hasUnseenQuestionListItems(items: readonly string[], raw: unknown, observedRevision: number, revision: number): boolean {
+  if (!items.length) return false;
+  const selected = new Set(items.map(digest));
+  return readMemberships(raw, revision).changes.some(change => change.revision > observedRevision && selected.has(change.item));
 }
 
 export function confirmQuestionItems(raw: unknown, time: ActionTime | null): MembershipConfirmation[] {
