@@ -207,8 +207,8 @@ export default function ScratchSortingBoard({
   const [subDraft, setSubDraft] = useState('');
   const [lastMove, setLastMove] = useState<LastMove | null>(null);
   const [justPlaced, setJustPlaced] = useState<string[]>([]);
-  const [editRequest, setEditRequest] = useState<{ id: string; n: number } | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editRequest, setEditRequest] = useState<{ id: string; n: number; place: ScratchPlace } | null>(null);
+  const [openEdit, setOpenEdit] = useState<{ id: string; place: ScratchPlace } | null>(null);
   const [renaming, setRenaming] = useState<OutlineNoteTarget | null>(null);
   const isRenaming = (kind: OutlineNoteTarget['kind'], id: string) => renaming?.kind === kind && renaming.id === id;
   const titleEditor = (target: OutlineNoteTarget, initial: string) => (
@@ -217,8 +217,10 @@ export default function ScratchSortingBoard({
       onCancel={() => setRenaming(null)} onSave={(text) => { if (!isReadOnly) onRenameTitle(target, text); setRenaming(null); }} />
   );
   const requestEdit = (id: string) => {
+    const place = placeById.get(id);
+    if (!place) return;
     setExpanded((current) => ({ ...current, [id]: true }));
-    setEditRequest((current) => ({ id, n: (current?.n ?? 0) + 1 }));
+    setEditRequest((current) => ({ id, place, n: (current?.n ?? 0) + 1 }));
   };
   // The sermon page slides its modes with a transform, and anything "fixed" inside a transformed box
   // is placed against that box, not the screen. The card in the hand and the phone's bottom bar are
@@ -268,9 +270,19 @@ export default function ScratchSortingBoard({
     });
     return places;
   }, [sorted]);
+  // Keep the open editor mounted in its original list until Save or Cancel.
+  // Commands and drop destinations use the latest stored outline and placement.
+  const editPlace = openEdit ?? editRequest;
+  const editingNoteId = editPlace?.id;
+  const displayed = useMemo(() => {
+    const stored = editPlace && placeById.get(editPlace.id);
+    return editPlace && stored && !sameScratchPlace(stored, editPlace.place)
+      ? sortScratch(notes, outline, true, editPlace)
+      : sorted;
+  }, [editPlace, notes, outline, placeById, sorted]);
   // The board shows the nodes' old one-line reminders as notes too, so they count like notes.
   const total = placeById.size;
-  const placed = total - sorted.pool.length;
+  const placed = total - displayed.pool.length;
   const shownNotes = useMemo(() => [...outlineNoteSketches(outline), ...notes], [notes, outline]);
   /** The id a note has after a move: an old reminder becomes an ordinary note under its stable id. */
   const idAfterMove = useCallback((id: string) => {
@@ -391,10 +403,13 @@ export default function ScratchSortingBoard({
   /** A spot's id → the place a note dropped there goes to; a card's id stands for the card's own place. */
   const dropPlaces = useMemo(() => {
     const places = new Map<string, { place: ScratchPlace; label: string }>(targets.map((target) => [target.key, { place: target.place, label: target.label }]));
-    placeById.forEach((place, id) => places.set(noteDropId(id), { place, label: targetLabel(place) }));
+    placeById.forEach((place, id) => {
+      if (id !== editingNoteId) places.set(noteDropId(id), { place, label: targetLabel(place) });
+    });
     return places;
-  }, [placeById, targetLabel, targets]);
-  const carriedIds = dragging ? (selected.includes(dragging) ? selected : [dragging]) : [];
+  }, [editingNoteId, placeById, targetLabel, targets]);
+  const dragIds = (id: string) => (selected.includes(id) ? selected : [id]).filter(noteId => noteId !== editingNoteId);
+  const carriedIds = dragging ? dragIds(dragging) : [];
   /** Where the hand is, read from the window: the slot rule needs the pointer, not the dragged card's box. */
   const pointer = useRef<Point | null>(null);
   useEffect(() => {
@@ -416,7 +431,7 @@ export default function ScratchSortingBoard({
     const base = key ? dropPlaces.get(key) : undefined;
     if (!base) return null;
     if (!pointer.current) return { ...base, anchorId: null, side: 'after' };
-    const list = (orderByPlace.get(placeKey(base.place)) ?? []).filter((id) => !carriedIds.includes(id));
+    const list = (orderByPlace.get(placeKey(base.place)) ?? []).filter((id) => id !== editingNoteId && !carriedIds.includes(id));
     const cards = list.flatMap((id) => {
       const rect = boardRef.current?.querySelector(`[data-testid="scratch-sketch-${CSS.escape(id)}"]`)?.getBoundingClientRect();
       return rect && rect.width > 0 && rect.height > 0 ? [{ id, rect }] : [];
@@ -457,12 +472,12 @@ export default function ScratchSortingBoard({
     finishDrag();
     journal('drop', { id, over, place: drop ? placeKey(drop.place) : null, before: drop?.beforeId ?? null });
     if (!drop) return;
-    move(selected.includes(id) ? selected : [id], drop.place, drop.beforeId, true);
+    move(dragIds(id), drop.place, drop.beforeId, true);
   };
   const onDragCancel = () => { finishDrag(); journal('cancel'); };
   /** The line beside the card the slot is read from: above it or under it, and none where nothing would change. */
   const landingOf = (noteId: string): 'before' | 'after' | null => {
-    if (!dragging || !aim || aim.anchorId !== noteId) return null;
+    if (!dragging || noteId === editingNoteId || !aim || aim.anchorId !== noteId) return null;
     return changesNothing(carriedIds.filter((id) => id !== aim.beforeId), aim.place, aim.beforeId) ? null : aim.side;
   };
   // The screen reader hears the place the card goes to: «→ Вступление».
@@ -476,10 +491,15 @@ export default function ScratchSortingBoard({
       expanded={Boolean(expanded[note.id])} onToggleExpanded={() => setExpanded((current) => ({ ...current, [note.id]: !current[note.id] }))}
       text={renderText(note, editRequest?.id === note.id ? editRequest.n : 0,
         (editing) => {
-          setEditingId((current) => (editing ? note.id : current === note.id ? null : current));
-          if (editing) setEditRequest((current) => (current?.id === note.id ? null : current));
+          if (editing) {
+            const place = editRequest?.id === note.id ? editRequest.place : placeById.get(note.id);
+            if (place) setOpenEdit({ id: note.id, place });
+            setEditRequest((current) => (current?.id === note.id ? null : current));
+          } else {
+            setOpenEdit((current) => current?.id === note.id ? null : current);
+          }
         })}
-      editing={editingId === note.id} noteLocked={isNoteLocked} onEdit={() => requestEdit(note.id)} targets={targets} currentKey={placeKey(placeById.get(note.id) ?? POOL_PLACE)}
+      editing={openEdit?.id === note.id} noteLocked={isNoteLocked} onEdit={() => requestEdit(note.id)} targets={targets} currentKey={placeKey(placeById.get(note.id) ?? POOL_PLACE)}
       onMove={(place) => move([note.id], place)} onOpenMoveSheet={() => setSheet({ kind: 'move', ids: [note.id] })}
       onDelete={() => onDelete(note.id)}
       carried={Boolean(dragging) && carriedIds.includes(note.id) && note.id !== dragging} landing={landingOf(note.id)}
@@ -520,7 +540,7 @@ export default function ScratchSortingBoard({
             <button key={name} type="button" role="tab" aria-selected={tab === name} onClick={() => setTab(name)}
               className={`h-11 flex-1 rounded-xl border text-[15px] font-semibold transition-colors ${tab === name
                 ? 'border-violet-600 bg-violet-600 text-white' : 'border-gray-200 bg-white text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200'}`}>
-              {name === 'pool' ? t('scratch.sort.tabPool', { count: sorted.pool.length }) : t('scratch.sort.tabPlan', { placed, total })}
+              {name === 'pool' ? t('scratch.sort.tabPool', { count: displayed.pool.length }) : t('scratch.sort.tabPlan', { placed, total })}
             </button>
           ))}
         </div>
@@ -547,7 +567,7 @@ export default function ScratchSortingBoard({
               </button>
               <span className="my-1 h-px w-6 bg-gray-200 dark:bg-gray-700" aria-hidden="true" />
               <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-violet-100 px-2 text-xs font-semibold text-violet-700 dark:bg-violet-900/50 dark:text-violet-200"
-                title={t('scratch.sort.tabPool', { count: sorted.pool.length })}>{sorted.pool.length}</span>
+                title={t('scratch.sort.tabPool', { count: displayed.pool.length })}>{displayed.pool.length}</span>
               <button type="button" onClick={() => startFromRail('voice')} disabled={isReadOnly || Boolean(railVoiceUnavailable)}
                 aria-label={t('audio.newRecording')} title={railVoiceUnavailable || t('audio.newRecording')}
                 className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-green-600 text-white transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50">
@@ -562,7 +582,7 @@ export default function ScratchSortingBoard({
             <div className="shrink-0 border-b border-gray-100 p-3 md:p-3.5 dark:border-gray-800">
               <div className="mb-3 flex items-center gap-2">
                 <h2 ref={poolHeadingRef} tabIndex={-1} className="text-lg font-semibold text-gray-900 dark:text-gray-100">{t('scratch.sort.pool')}</h2>
-                <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-violet-100 px-2 text-xs font-semibold text-violet-700 dark:bg-violet-900/50 dark:text-violet-200">{sorted.pool.length}</span>
+                <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-violet-100 px-2 text-xs font-semibold text-violet-700 dark:bg-violet-900/50 dark:text-violet-200">{displayed.pool.length}</span>
                 <span className="flex-1" />
                 {/* How the board works: asked for, not printed over the notes every time. */}
                 <Popover>
@@ -598,8 +618,8 @@ export default function ScratchSortingBoard({
             </div>
             {/* The rail stays beside the plan while the page scrolls; its own list scrolls inside it. */}
             <div className="flex flex-col gap-2 p-2.5 md:min-h-0 md:flex-1 md:overflow-y-auto md:overscroll-contain">
-              {sorted.pool.map((note) => card(note, 'pool', true))}
-              {sorted.pool.length === 0 && (
+              {displayed.pool.map((note) => card(note, 'pool', true))}
+              {displayed.pool.length === 0 && (
                 <p className="rounded-xl border border-dashed border-gray-300 px-4 py-5 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">{t('scratch.sort.poolEmpty')}</p>
               )}
             </div>
@@ -617,7 +637,7 @@ export default function ScratchSortingBoard({
             </div>
             <div className="flex flex-col gap-4">
               {SECTION_KEYS.map((section) => {
-                const part = sorted.sections[section];
+                const part = displayed.sections[section];
                 const look = SECTION_LOOK[section];
                 const count = part.loose.length + part.points.reduce((sum, entry) => sum + entry.notes.length + entry.subPoints.reduce((s, sub) => s + sub.notes.length, 0), 0);
                 const empty = !part.loose.length && !part.points.length;

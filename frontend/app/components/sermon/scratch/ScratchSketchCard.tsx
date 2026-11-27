@@ -88,7 +88,7 @@ export default function ScratchSketchCard({
 }: ScratchSketchCardProps) {
   const { t } = useTranslation();
   const drag = useDraggable({ id: note.id, disabled: isReadOnly || editing });
-  const drop = useDroppable({ id: noteDropId(note.id), disabled: isReadOnly || carried });
+  const drop = useDroppable({ id: noteDropId(note.id), disabled: isReadOnly || editing || carried });
   const setRef = useCallback((node: HTMLDivElement | null) => { drag.setNodeRef(node); drop.setNodeRef(node); }, [drag, drop]);
   const pool = variant === 'pool';
   const moveTo = t('scratch.sort.moveTo');

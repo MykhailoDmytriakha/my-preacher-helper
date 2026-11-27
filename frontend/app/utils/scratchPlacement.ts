@@ -219,10 +219,23 @@ export function scratchAfterOutlineChange(notes: readonly ScratchNote[], before:
  * Every note in its place, in the sermon's note order; points and sub-points in outline order. The old
  * one-line reminders come first in their node (`outlineNoteSketches`) unless `withOutlineNotes` is false.
  */
-export function sortScratch(notes: readonly ScratchNote[], outline: SermonOutline | undefined, withOutlineNotes = true): SortedScratch {
+export function sortScratch(
+  notes: readonly ScratchNote[],
+  outline: SermonOutline | undefined,
+  withOutlineNotes = true,
+  editPlace?: { id: string; place: ScratchPlace },
+): SortedScratch {
   const index = indexOutline(outline);
   const all = withOutlineNotes ? [...outlineNoteSketches(outline), ...notes] : notes;
-  const placed = all.map((note) => ({ note, place: resolve(note, index) }));
+  const pinned = editPlace?.place;
+  const originalListExists = pinned && (!pinned.pointId || (
+    index.pointSection.get(pinned.pointId) === pinned.section
+    && (!pinned.subPointId || index.subPointParent.get(pinned.subPointId) === pinned.pointId)
+  ));
+  const placed = all.map((note) => ({
+    note,
+    place: originalListExists && pinned && note.id === editPlace?.id ? pinned : resolve(note, index),
+  }));
   const pool = placed.filter(({ place }) => !place.section).map(({ note }) => note);
   const sections = Object.fromEntries(SECTION_KEYS.map((section) => {
     const inSection = placed.filter(({ place }) => place.section === section);
