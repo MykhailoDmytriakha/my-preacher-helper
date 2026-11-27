@@ -10368,6 +10368,8 @@ The mounted-window regression failed on `cf8081a12` and passed after the fix. Th
 
 Independent review confirmed the checked opening, unknown historical action time, and the submit guard during local persistence.
 
+Rechecked on `4c1a742c4` after subsequent session changes. The local production build and 202 tests in ten suites passed. On the Bible page in Ruth 1, hidden Chrome sent exactly one update for a matching old opening and reopened the continued text. A changed and an unknown opening still displayed both versions with Done disabled and sent zero updates. The two widths were 390 and 1280 px. Now out of the local fixing queue, with its release check below. Results are in `artifacts/comment-legacy-20261124/recheck-4c1a742c4`.
+
 After an authorized deployment, use one test account and one disposable comment whose older local draft still contains its original opening. Restore the draft, add a sentence and press Done, then reopen the comment and check both pieces of text. With an intentionally different saved body or an unknown historical opening, check that both versions are available before choosing. Keep fixture injection and request counting on the isolated stand.
 
 
