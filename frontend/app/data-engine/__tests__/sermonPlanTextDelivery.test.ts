@@ -1,5 +1,6 @@
 import { documentEngineHarness, settleEngine } from '../../../test-utils/documentEngineHarness';
 
+import { applyCommand } from '../protocol';
 import { planCellOpening } from '../sermonPlanCellSession';
 
 import type { DocumentData } from '../types';
@@ -136,4 +137,68 @@ it('saves an independent point while the two versions of another point remain av
       theirs: { exists: true, value: 'From phone' },
     }]);
   } finally { dispose(); }
+});
+
+it('replays a selected plan version after reopening behind an earlier in-flight save of the same cell', async () => {
+  const resource = { collection: 'sermons', id: 'sermon-plan-proposal' };
+  const value: DocumentData = { userId: 'owner', title: 'Sermon', verse: 'John 1:1', date: '2026-11-21',
+    thoughts: [], outline: { introduction: [], main: [{ id: 'point', text: 'Point' }], conclusion: [] },
+    planText: { point: 'Originally saved' } };
+  let noteEarlierEntered!: () => void;
+  const earlierEntered = new Promise<void>(resolve => { noteEarlierEntered = resolve; });
+  let releaseEarlier!: () => void;
+  const earlierGate = new Promise<void>(resolve => { releaseEarlier = resolve; });
+  let held = false;
+  const harness = documentEngineHarness({
+    resource, value, metadata: { protocol: 1, generation: 'sermon-generation', revision: 1, deleted: false },
+  }, {
+    apply: async (command, server) => {
+      if (!held) {
+        held = true;
+        noteEarlierEntered();
+        await earlierGate;
+      }
+      return applyCommand(command, server);
+    },
+  });
+  const initial = harness.createBrowser();
+  let reopened: ReturnType<typeof harness.createBrowser> | undefined;
+  try {
+    initial.engine.setOwner('owner');
+    initial.engine.setOnline(false);
+    const editor = await initial.engine.openEditor(resource, 'plan-before-reload', { autoSaveOnResume: false });
+    const seen = planCellOpening(editor.getState().checkpoint, 'point', 'Originally saved')!;
+    await editor.editPlanCell(seen, 'Earlier typed words');
+    await editor.savePlanCells(['point']);
+    initial.engine.setOnline(true);
+    await earlierEntered;
+
+    const proposalOpening = planCellOpening(editor.getState().checkpoint, 'point', 'Earlier typed words')!;
+    const staging = editor.editPlanCell(proposalOpening, 'Selected proposal');
+    const saving = editor.savePlanCells(['point']);
+    await Promise.all([staging, saving]);
+
+    const captured = (await harness.commits.list('owner')).sort((a, b) => a.editGeneration - b.editGeneration);
+    expect(captured.map(item => item.value?.planText)).toEqual([
+      { point: 'Earlier typed words' }, { point: 'Selected proposal' },
+    ]);
+    expect(captured[1].predecessor).toBe(captured[0].id);
+    expect(harness.server.value?.planText).toEqual({ point: 'Originally saved' });
+
+    initial.dispose();
+    releaseEarlier();
+    await settleEngine();
+
+    reopened = harness.createBrowser();
+    reopened.engine.setOwner('owner');
+    reopened.engine.setOnline(true);
+    await reopened.engine.retry(resource);
+    await settleEngine();
+    expect(harness.server.value?.planText).toEqual({ point: 'Selected proposal' });
+    expect(harness.server.metadata?.revision).toBe(3);
+  } finally {
+    releaseEarlier();
+    reopened?.dispose();
+    initial.dispose();
+  }
 });
