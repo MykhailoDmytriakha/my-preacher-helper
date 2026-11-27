@@ -4,6 +4,7 @@ import { DocumentDuplicateIcon, LinkIcon, PlusIcon, TrashIcon } from '@heroicons
 import { useCallback, useMemo, useState } from 'react';
 
 import { ListReadFeedback } from '@/components/ListReadFeedback';
+import hoverActions from '@/components/ui/HoverActions.module.css';
 import Select from '@/components/ui/Select';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useClipboard } from '@/hooks/useClipboard';
@@ -36,7 +37,7 @@ const ACTIONS_CLASS = 'flex flex-col gap-2 sm:flex-row sm:items-stretch sm:h-10'
 const ACTION_BUTTON_CLASS = `inline-flex h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50 whitespace-nowrap ${STUDIES_ACTION}`;
 const GRID_COLS_CLASS = 'md:grid-cols-[2fr_minmax(180px,1.2fr)_110px_90px_310px]';
 const TABLE_HEADER_CLASS = `hidden md:grid gap-4 px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 ${GRID_COLS_CLASS} items-center border-b border-gray-100 dark:border-gray-700/50`;
-const ROW_CLASS = `grid grid-cols-1 gap-3 md:gap-4 px-4 py-4 text-sm text-gray-700 transition-colors border-b border-gray-50 dark:border-gray-700/50 dark:text-gray-200 ${GRID_COLS_CLASS} items-center hover:bg-gray-50/50 dark:hover:bg-gray-700/20`;
+const ROW_CLASS = `grid grid-cols-1 gap-3 md:gap-4 px-4 py-4 text-sm text-gray-700 transition-colors border-b border-gray-50 dark:border-gray-700/50 dark:text-gray-200 ${GRID_COLS_CLASS} items-center hover:bg-gray-50/50 dark:hover:bg-gray-700/20 ${hoverActions.row}`;
 
 /** How much of a comment's words names it beside its place. */
 const COMMENT_WORDS_SHOWN = 40;
@@ -256,7 +257,7 @@ export default function ShareLinksPanel({
                       type="button"
                       onClick={() => handleDelete(link.id)}
                       disabled={deletingId === link.id}
-                      className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg border border-red-100 bg-red-50/30 px-3 text-xs font-semibold text-red-600 transition hover:bg-red-50 hover:text-red-700 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-red-500/20 dark:border-red-900/30 dark:bg-red-900/10 dark:text-red-400 dark:hover:bg-red-900/20"
+                      className={`inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg border border-red-100 bg-red-50/30 px-3 text-xs font-semibold text-red-600 transition hover:bg-red-50 hover:text-red-700 disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-red-500/20 dark:border-red-900/30 dark:bg-red-900/10 dark:text-red-400 dark:hover:bg-red-900/20 ${hoverActions.actions}`}
                       title={t('studiesWorkspace.shareLinks.deleteLink')}
                     >
                       <TrashIcon className="h-3.5 w-3.5" />

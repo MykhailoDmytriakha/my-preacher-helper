@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import hoverActions from '@/components/ui/HoverActions.module.css';
 import { useClipboard } from '@/hooks/useClipboard';
 import { StudyNote, StudyNoteShareLink } from '@/models/models';
 import { persistedWrite } from '@/utils/recoverableWrite';
@@ -65,6 +66,18 @@ describe('ShareLinksPanel', () => {
     );
 
     expect(screen.getByText('studiesWorkspace.shareLinks.empty')).toBeInTheDocument();
+  });
+
+  it('reveals each share-link deletion without hiding copy or open', () => {
+    render(<ShareLinksPanel notes={[createTestNote()]} shareLinks={[createShareLink()]} onCreate={jest.fn()} onDelete={jest.fn()} />);
+    const deletion = screen.getByRole('button', { name: 'studiesWorkspace.shareLinks.deleteLink' });
+    const copy = screen.getByRole('button', { name: 'studiesWorkspace.shareLinks.copyLink' });
+    const open = screen.getByRole('link', { name: 'studiesWorkspace.shareLinks.openLink' });
+    const row = deletion.closest('.' + hoverActions.row);
+    expect(row).toContainElement(screen.getByText('Shared note title'));
+    expect(deletion).toHaveClass(hoverActions.actions);
+    expect(copy.closest('.' + hoverActions.actions)).toBeNull();
+    expect(open.closest('.' + hoverActions.actions)).toBeNull();
   });
 
   it('shows loading state when loading and no links', () => {

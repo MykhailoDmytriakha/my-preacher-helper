@@ -89,9 +89,6 @@
 **A — видны всегда (поражено):**
 | место | экран и предмет | что видно |
 |---|---|---|
-| `frontend/app/components/series/SeriesItemCard.tsx:147` | Серия, каждая проповедь или группа | × «убрать из серии» |
-| `frontend/app/(pages)/(private)/studies/StudyNoteCard.tsx:577` | Изучения, подвал раскрытой карточки | ✎ «Изменить» |
-| `frontend/app/(pages)/(private)/studies/components/ShareLinksPanel.tsx:255` | Ссылки заметки, каждая ссылка | 🗑 |
 | `frontend/app/(pages)/(private)/care/orders/[id]/page.tsx:1072` | Служение, каждый шаг | 🗑 |
 | `frontend/app/(pages)/(private)/care/council/[id]/page.tsx:1004,845,947` | Совет, каждая тема, пока совет готовится | «Изменить», «Внести / изменить итог» |
 | `frontend/app/(pages)/(private)/sermons/[id]/plan/manual/page.tsx:196,227` (`NodeControls.tsx:117`) | План «От руки», каждый пункт и подпункт | 🗑 |

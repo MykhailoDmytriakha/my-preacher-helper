@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 
 import SeriesItemCard from '@/components/series/SeriesItemCard';
+import hoverActions from '@/components/ui/HoverActions.module.css';
 
 jest.mock('next/link', () => {
   return function MockLink({ href, children, className }: any) {
@@ -54,7 +55,10 @@ describe('SeriesItemCard', () => {
     expect(screen.getByText('Sermons')).toBeInTheDocument();
     expect(screen.getByText('dashboard.preached')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByTitle('workspaces.series.actions.removeFromSeries'));
+    const remove = screen.getByTitle('workspaces.series.actions.removeFromSeries');
+    expect(screen.getByText('Faith Sermon').closest('.' + hoverActions.row)).toContainElement(remove);
+    expect(remove).toHaveClass(hoverActions.actions);
+    fireEvent.click(remove);
     expect(onRemove).toHaveBeenCalledWith('sermon', 'sermon-1');
   });
 

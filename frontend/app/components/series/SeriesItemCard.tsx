@@ -7,6 +7,7 @@ import Link from 'next/link';
 
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { Chip } from '@/components/ui/Chip';
+import hoverActions from '@/components/ui/HoverActions.module.css';
 import { useTranslation } from '@locales/useTranslation';
 import { formatDate } from '@utils/dateFormatter';
 import { getEffectiveIsPreached } from '@utils/preachDateStatus';
@@ -68,7 +69,7 @@ export default function SeriesItemCard({
     <div
       ref={setNodeRef}
       style={style}
-      className={`relative flex gap-4 rounded-xl border border-gray-200 bg-white/90 p-4 shadow-sm ring-1 ring-gray-100 dark:border-gray-700 dark:bg-gray-900/70 dark:ring-gray-800 ${isDragging ? 'shadow-lg ring-2 ring-blue-500/40' : 'hover:shadow-md'
+      className={`relative flex gap-4 rounded-xl border border-gray-200 bg-white/90 p-4 shadow-sm ring-1 ring-gray-100 dark:border-gray-700 dark:bg-gray-900/70 dark:ring-gray-800 ${hoverActions.row} ${isDragging ? 'shadow-lg ring-2 ring-blue-500/40' : 'hover:shadow-md'
         }`}
     >
       <div className="flex flex-col items-center gap-2">
@@ -150,7 +151,7 @@ export default function SeriesItemCard({
             event.stopPropagation();
             onRemove(item.type, item.refId);
           }}
-          className="self-start rounded-lg p-2 text-gray-400 transition hover:bg-red-50 hover:text-red-600 dark:text-gray-500 dark:hover:bg-red-900/30 dark:hover:text-red-300"
+          className={`self-start rounded-lg p-2 text-gray-400 transition hover:bg-red-50 hover:text-red-600 dark:text-gray-500 dark:hover:bg-red-900/30 dark:hover:text-red-300 ${hoverActions.actions}`}
           title={t('workspaces.series.actions.removeFromSeries')}
         >
           <XMarkIcon className="h-4 w-4" />

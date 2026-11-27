@@ -19,6 +19,7 @@ import { useOpenStoredReference } from '@/components/bible/useOpenStoredReferenc
 import { AnalysisIcon } from '@/components/Icons';
 import { Chip } from '@/components/ui/Chip';
 import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
+import hoverActions from '@/components/ui/HoverActions.module.css';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useClipboard } from '@/hooks/useClipboard';
 import { StudyNote } from '@/models/models';
@@ -263,7 +264,7 @@ export default function StudyNoteCard({
   const preview = <FoldedPreview note={note} searchQuery={searchQuery} />;
 
   return (
-    <article data-note-id={note.id} data-lit={isLit ? 'true' : undefined} className={cardFrame(note.type, isExpanded, isLit)}>
+    <article data-note-id={note.id} data-lit={isLit ? 'true' : undefined} className={`${cardFrame(note.type, isExpanded, isLit)} ${hoverActions.row}`}>
       {/* Header row: the chevron folds the card open, the rest of the row opens the note */}
       <div className="flex w-full items-start gap-3 p-4">
         {/* Deliberately a sibling of the navigating row, not a child of it. As a plain
@@ -575,7 +576,7 @@ export default function StudyNoteCard({
             <div className="flex items-center justify-between">
               <button
                 onClick={() => onEdit(note)}
-                className={`inline-flex items-center gap-1.5 rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 ${TOUCH_AREA.short}`}
+                className={`inline-flex items-center gap-1.5 rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 ${TOUCH_AREA.short} ${hoverActions.actions}`}
               >
                 <PencilIcon className="h-3.5 w-3.5" />
                 {t('common.edit')}

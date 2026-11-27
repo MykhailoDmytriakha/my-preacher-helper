@@ -20,6 +20,7 @@ jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush }),
 }));
 
+import hoverActions from '@/components/ui/HoverActions.module.css';
 import { useClipboard } from '@/hooks/useClipboard';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
 import { StudyNote } from '@/models/models';
@@ -48,6 +49,17 @@ describe('StudyNoteCard', () => {
   // "did not navigate" pass or fail for the wrong reason.
   beforeEach(() => {
     mockPush.mockClear();
+  });
+
+  it('leaves an expanded note’s edit action on its own card', () => {
+    const note = createTestNote({ title: 'Note to edit' }), onEdit = jest.fn();
+    render(<StudyNoteCard note={note} bibleLocale="en" isExpanded onToggleExpand={jest.fn()} onEdit={onEdit} />);
+    const row = screen.getByRole('article');
+    const editNote = screen.getByRole('button', { name: 'common.edit' });
+    expect(row).toHaveClass(hoverActions.row);
+    expect(editNote).toHaveClass(hoverActions.actions);
+    fireEvent.click(editNote);
+    expect(onEdit).toHaveBeenCalledWith(note);
   });
 
   // BUG-20260902-note-card-chevron-navigates-instead-of-expanding: the chevron drew the
