@@ -1,7 +1,6 @@
-import type { ServiceOrder } from '@/models/models';
-
 /**
- * WHERE EACH ORDER OF SERVICE SITS IN THE PASTOR'S OWN LIST.
+ * WHERE EACH ITEM SITS IN THE PASTOR'S OWN LIST — orders of service, hard-question themes and the
+ * questions inside a group (moved here from `serviceOrderRank.ts`, 2026-11-25: one rule, every list).
  *
  * A rank is a number, and moving an order writes only that order's rank: the midpoint between
  * its new neighbours. The alternative — storing 1, 2, 3 and renumbering — rewrites every row
@@ -33,15 +32,18 @@ const MIN_GAP = 1e-6;
 const isRank = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);
 
+/** Anything a list orders by hand: its document id and its rank. */
+export type Ranked = { id: string; rank: number };
+
 /** The rank a document sorts by; anything unusable sorts after everything that has one. */
-const rankOf = (order: Pick<ServiceOrder, 'rank'>): number =>
+const rankOf = (order: Pick<Ranked, 'rank'>): number =>
   isRank(order.rank) ? order.rank : Number.POSITIVE_INFINITY;
 
 /**
  * The pastor's order, and the SAME order on every device: rank first, then document id — never
  * `createdAt`, which is a clock reading from whichever phone happened to write the row.
  */
-export function sortByRank<T extends Pick<ServiceOrder, 'id' | 'rank'>>(orders: T[]): T[] {
+export function sortByRank<T extends Ranked>(orders: T[]): T[] {
   return [...orders].sort((a, b) => {
     const left = rankOf(a), right = rankOf(b);
     if (left !== right) return left < right ? -1 : 1;
@@ -50,7 +52,7 @@ export function sortByRank<T extends Pick<ServiceOrder, 'id' | 'rank'>>(orders: 
 }
 
 /** The rank for a new order added at the end of the list. */
-export function rankForAppend(orders: Pick<ServiceOrder, 'id' | 'rank'>[]): number {
+export function rankForAppend(orders: Ranked[]): number {
   const ranked = sortByRank(orders).filter((order) => isRank(order.rank));
   const last = ranked[ranked.length - 1];
   return last ? rankOf(last) + RANK_STEP : RANK_STEP;
@@ -76,7 +78,7 @@ export function rankBetween(before: number | null, after: number | null): number
 }
 
 /** True when the list can no longer be reordered by midpoints and needs a clean spread. */
-export function needsRenumber(orders: Pick<ServiceOrder, 'id' | 'rank'>[]): boolean {
+export function needsRenumber(orders: Ranked[]): boolean {
   const sorted = sortByRank(orders);
   for (let i = 1; i < sorted.length; i += 1) {
     const previous = sorted[i - 1];
@@ -88,7 +90,7 @@ export function needsRenumber(orders: Pick<ServiceOrder, 'id' | 'rank'>[]): bool
 }
 
 /** A clean spread over the list as it currently reads. One write per document, done online. */
-export function renumber<T extends Pick<ServiceOrder, 'id' | 'rank'>>(
+export function renumber<T extends Ranked>(
   orders: T[]
 ): { id: string; rank: number }[] {
   return sortByRank(orders).map((order, index) => ({
@@ -102,7 +104,7 @@ export function renumber<T extends Pick<ServiceOrder, 'id' | 'rank'>>(
  * neighbours are taken from the list WITHOUT the moved order, which is what makes "drop it
  * where I am pointing" mean the same thing whether it travelled up or down.
  */
-export function rankForMove<T extends Pick<ServiceOrder, 'id' | 'rank'>>(
+export function rankForMove<T extends Ranked>(
   orders: T[],
   movedId: string,
   toIndex: number
