@@ -10804,6 +10804,8 @@ The pixel regression failed on the original Chrome frames and passed on the corr
 
 The initial whole-branch Jest run had 17,911 passes, 31 skips and two failures. The book-list test expected a height transition and passed in the final targeted run after updating the assertion. The architecture failure matched the archived parent across all 22 reported accesses and is tracked as `BUG-20261126-engine-recovery-import-boundary`.
 
+The `2b3085e9c` recheck found the picker and its updated test byte-identical to `8242705ee`. The saved browser captures still fail before and pass after the same pixel oracle. I rechecked the comparison image and recorded both fresh replay results in `artifacts/bible-hold-20261126/recheck-2b3085e9c`. This closes the local tracker entry using the original qualified browser acceptance.
+
 After authorized rollout, open Bible and hold a book without releasing it for half a second. Watch the label as the edge crosses it. Repeat on a colored book, on a chapter after a short press, and on a book in the reader's picker. Check light and dark themes, then release to confirm the destination opens. Move away before release to confirm cancellation.
 
 ## BUG-20261126-engine-recovery-import-boundary · Restore the public recovery boundary
