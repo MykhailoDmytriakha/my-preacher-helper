@@ -57,6 +57,7 @@ function setup(initial: ResourceSnapshot) {
     const instance = new DataEngine({ runtime, transport, commits, checkpoints: createIndexedDbCheckpoints(),
       observer: new ResourceObserver({ transport, source: { listen: () => () => undefined } }),
       snapshots: { read: async (_account, resource) => caches.get(key(resource)),
+        list: async (_account: string, collection: string) => [...caches.values()].filter(item => item.resource.collection === collection),
         put: async (_account, item) => { caches.set(key(item.resource), item); } },
       operationId: () => 'action-' + (++operation),
     });
@@ -158,5 +159,27 @@ it('recaptures only after the atomic storage rejects an expired predecessor refe
     await engine.createHardQuestionWithGroup(next, words(group.id, 'Second question'), undefined);
     expect(persist).toHaveBeenCalledTimes(2);
     expect((await s.commits.list(owner)).filter(request => request.baseline.resource.id === next.id)).toHaveLength(1);
+  } finally { engine.dispose(); }
+});
+
+it.each([false, true])('appends the next question with a stale list, previous save acknowledged=%s', async acknowledged => {
+  const s = setup(snapshot({ ...heading, groups: [group] }, 'theme-generation')), engine = s.createEngine();
+  try {
+    await engine.createHardQuestionWithGroup(question, words(group.id, 'First question'));
+    if (acknowledged) {
+      engine.setOnline(true);
+      await engine.retry();
+      expect(await s.commits.list(owner)).toEqual([]);
+      expect(await engine.peekCached(question)).toMatchObject({ value: { rank: 1000 } });
+      engine.setOnline(false);
+    }
+    // What a still-open list supplied before collection presentation caught up.
+    await engine.createHardQuestionWithGroup(next, words(group.id, 'Second question'));
+    const second = (await s.commits.list(owner)).find(request => request.baseline.resource.id === next.id);
+    expect(second?.value).toMatchObject({ title: 'Second question', rank: 2000 });
+    engine.setOnline(true);
+    await engine.retry();
+    expect((await s.read(question)).value?.rank).toBe(1000);
+    expect((await s.read(next)).value?.rank).toBe(2000);
   } finally { engine.dispose(); }
 });

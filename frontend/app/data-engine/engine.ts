@@ -120,6 +120,7 @@ export type ManualRecoveryPolicy = 'same-slot' | 'same-selection';
 
 export interface SnapshotStore {
   read(owner: string, resource: ResourceRef): Promise<ResourceSnapshot | undefined>;
+  list?(owner: string, collection: string): Promise<ResourceSnapshot[]>;
   /** Adapters shared by tabs should compare and store atomically with canReplaceSnapshot. */
   put(owner: string, snapshot: ResourceSnapshot): Promise<void>;
 }
@@ -1229,11 +1230,14 @@ export class DataEngine {
       this.assertCurrent(owner, generation);
       requests.forEach(request => this.rememberCommit(request));
       // A predecessor can leave the queue only after its accepted version reaches the cache.
-      const snapshot = await this.cachedSnapshotWithAcknowledgements(owner, generation, theme)
-        ?? requests.find(request => sameResource(request.baseline.resource, theme))?.baseline
-        ?? await this.readSnapshot(owner, generation, theme);
+      const [snapshot, confirmedQuestions] = await Promise.all([
+        this.cachedSnapshotWithAcknowledgements(owner, generation, theme).then(cached => cached
+          ?? requests.find(request => sameResource(request.baseline.resource, theme))?.baseline
+          ?? this.readSnapshot(owner, generation, theme)),
+        this.options.snapshots.list?.(owner, 'hardQuestions') ?? [],
+      ]);
       this.assertCurrent(owner, generation);
-      return captureHardQuestionGroup(owner, this.options.operationId(), resource, words, snapshot, selected, requests);
+      return captureHardQuestionGroup(owner, this.options.operationId(), resource, words, snapshot, selected, requests, confirmedQuestions);
     }, theme.id);
     await this.finishHardQuestionCapture(owner, generation, capture);
   }
