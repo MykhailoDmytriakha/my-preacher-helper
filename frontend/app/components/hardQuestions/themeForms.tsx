@@ -1,11 +1,13 @@
 'use client';
 
 import { useId, useMemo, useRef, useState, type FormEvent, type ReactNode, type RefObject } from 'react';
+import { toast } from 'sonner';
 
 import FormDialog, { FormActions } from '@/components/ui/FormDialog';
 import { FORM_INPUT_CLASS } from '@/components/ui/FormField';
 import { LiveTextArea, LiveTextInput } from '@/components/ui/LiveTextInput';
 import { useAppLocale } from '@/hooks/useAppLocale';
+import { copyPlainText } from '@/utils/clipboard';
 import { cleanList, cleanText, readTheme, standsOnScripture } from '@/utils/hardQuestions';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -39,7 +41,9 @@ const growing = `${FORM_INPUT_CLASS} mt-2 overflow-hidden`;
 export const THEME_FORM_SLOT = 'theme-words';
 export const THEME_FORM_FIELDS = [['title'], ['intro']];
 
-export function ThemeEditDialog({ themeId, onClose, recoverId }: { themeId: string; onClose: () => void; recoverId?: string | null }) {
+export function ThemeEditDialog({ themeId, onClose, recoverId, gone = false }: {
+  themeId: string; onClose: () => void; recoverId?: string | null; gone?: boolean;
+}) {
   const { t } = useTranslation();
   const resource = useMemo(() => ({ collection: 'hardQuestionThemes', id: themeId }), [themeId]);
   const engine = useEngineForm(resource, THEME_FORM_SLOT, THEME_FORM_FIELDS, t('hardQuestions.theme.editTitle'), recoverId);
@@ -56,7 +60,7 @@ export function ThemeEditDialog({ themeId, onClose, recoverId }: { themeId: stri
   const close = () => { void (form.active ? form.cancel() : Promise.resolve()).then(onClose, () => undefined); };
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (comparing || saving || !theme?.title.trim()) return;
+    if (gone || comparing || saving || !theme?.title.trim()) return;
     setSaving(true);
     try {
       await form.save((draft) => {
@@ -75,18 +79,32 @@ export function ThemeEditDialog({ themeId, onClose, recoverId }: { themeId: stri
     }
   };
   const disabled = !form.active || form.readOnly;
+  const canCopyDraft = Boolean(theme && form.dirty);
+  const copyDraft = () => {
+    const text = [theme?.title, theme?.intro].filter(Boolean).join('\n\n');
+    void copyPlainText(text).then(() => toast.success(t('hardQuestions.draft.copied')), () => toast.error(t('hardQuestions.draft.copyFailed')));
+  };
   return (
     <FormDialog title={t('hardQuestions.theme.editTitle')} tone="rose" size="form" onClose={close} closeDisabled={saving} unsaved={form.dirty} showCloseButton onSubmit={submit}
       footer={<FormActions tone="rose" onCancel={close} cancelLabel={t('common.cancel')} submitLabel={t('common.save')} saving={saving}
-        submitDisabled={disabled || comparing || !theme?.title.trim()} unsaved={form.dirty} />}>
-      <EngineFormStatus {...engine} className="mb-4" />
+        submitDisabled={gone || disabled || comparing || !theme?.title.trim()} unsaved={form.dirty} />}>
+      {gone ? (
+        <div role="status" className="mb-4 flex flex-col gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between dark:border-amber-800/70 dark:bg-amber-950/40 dark:text-amber-50">
+          <span>{t(canCopyDraft ? 'hardQuestions.draft.orphan' : 'dataSync.phase.deleted')}</span>
+          {canCopyDraft && (
+            <button type="button" onClick={copyDraft} className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-full bg-amber-900 px-4 text-sm font-semibold text-white hover:bg-amber-950 dark:bg-amber-200 dark:text-amber-950">
+              {t('hardQuestions.draft.copy')}
+            </button>
+          )}
+        </div>
+      ) : <EngineFormStatus {...engine} className="mb-4" />}
       {theme && (
         <div className="flex flex-col gap-5">
           <Field label={t('hardQuestions.dialogs.themeTitle')}>
-            {({ id }) => <LiveTextInput id={id} value={theme.title} onChange={(value) => void set('title', value)} disabled={disabled} className={`${FORM_INPUT_CLASS} mt-2`} />}
+            {({ id }) => <LiveTextInput id={id} value={theme.title} onChange={(value) => void set('title', value)} disabled={disabled && !gone} readOnly={gone} className={`${FORM_INPUT_CLASS} mt-2`} />}
           </Field>
           <Field label={t('hardQuestions.dialogs.intro')} hint={t('hardQuestions.dialogs.introHint')}>
-            {({ id, describedBy }) => <LiveTextArea id={id} aria-describedby={describedBy} value={theme.intro ?? ''} onChange={(value) => void set('intro', value)} disabled={disabled} rows={4} className={growing} />}
+            {({ id, describedBy }) => <LiveTextArea id={id} aria-describedby={describedBy} value={theme.intro ?? ''} onChange={(value) => void set('intro', value)} disabled={disabled && !gone} readOnly={gone} rows={4} className={growing} />}
           </Field>
         </div>
       )}

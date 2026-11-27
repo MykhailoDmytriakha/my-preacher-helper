@@ -67,6 +67,7 @@ jest.mock('@/hooks/useSearchInputQuery', () => {
 // The engine's document and form: what the page reads, and what a form is asked to save.
 type Doc = Record<string, unknown> | null;
 let mockDocument: Doc = null;
+let mockFormDocument: Doc | undefined;
 let mockPresence: { kind: string } = { kind: 'present' };
 let mockConflictPaths: readonly (readonly string[])[] = [];
 let mockBasisConflictId: string | undefined;
@@ -99,7 +100,7 @@ jest.mock('@/data-engine/react.client', () => ({
     applyHardQuestionThemeOrderReview: mockApplyThemeOrderReview,
   }),
   useDataForm: () => ({
-    data: mockDocument, loading: false, active: true, readOnly: false, dirty: mockFormDirty, busy: false, status: null, comparison: mockComparison, error: null,
+    data: mockFormDocument === undefined ? mockDocument : mockFormDocument, loading: false, active: true, readOnly: false, dirty: mockFormDirty, busy: false, status: null, comparison: mockComparison, error: null,
     recoveryIdentity: {}, recoveryReady: true, recoveryVersion: '', exactChoice: Boolean(mockComparison), begin: () => Promise.resolve(), update: mockFormUpdate,
     save: mockFormSave, cancel: () => Promise.resolve(), recover: mockRecover, retry: jest.fn(), keepLocal: jest.fn(), acceptRemote: jest.fn(),
     listRecoverable: () => mockPendingFormCopies ?? Promise.resolve(mockFormCopies), discardRecovery: jest.fn(), captureDocumentMetadataAction: () => ({ documentMetadata: { time: null } }),
@@ -146,6 +147,7 @@ beforeEach(() => {
   mockParams = {};
   mockSearch = '';
   mockDocument = null;
+  mockFormDocument = undefined;
   mockPresence = { kind: 'present' };
   mockDraftChoices = [];
   mockConflictPaths = [];
@@ -551,6 +553,42 @@ describe('a theme', () => {
     fireEvent.change(screen.getByLabelText('hardQuestions.dialogs.asked'), { target: { value: '' } });
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'common.cancel' })); });
     await waitFor(() => expect(screen.queryByLabelText('hardQuestions.dialogs.asked')).not.toBeInTheDocument());
+  });
+
+  it('keeps the already open theme form and its unsent words when the theme disappears', async () => {
+    mockFormDocument = { ...CLOTHES, title: 'Набранное название', intro: 'Вступление, которое я ещё не сохранил' };
+    mockFormDirty = true;
+    const view = render(<HardQuestionThemePage />);
+    await chooseInThemeMenu('hardQuestions.theme.edit');
+    const original = await screen.findByRole('dialog', { name: 'hardQuestions.theme.editTitle' });
+    const intro = within(original).getByLabelText('hardQuestions.dialogs.intro');
+    expect(intro).toHaveValue('Вступление, которое я ещё не сохранил');
+
+    mockDocument = null;
+    mockPresence = { kind: 'absent' };
+    view.rerender(<HardQuestionThemePage />);
+    expect(screen.getByText('recordAvailability.notFound')).toBeInTheDocument();
+    const retained = screen.getByRole('dialog', { name: 'hardQuestions.theme.editTitle' });
+    expect(within(retained).getByLabelText('hardQuestions.dialogs.intro')).toBe(intro);
+    expect(intro).toHaveAttribute('readonly');
+    expect(intro).toHaveValue('Вступление, которое я ещё не сохранил');
+    expect(within(retained).getByRole('button', { name: 'common.save' })).toBeDisabled();
+    expect(within(retained).getByRole('button', { name: 'hardQuestions.draft.copy' })).toBeEnabled();
+  });
+
+  it('says the theme was deleted when the open form has no unsaved edit', async () => {
+    mockFormDocument = { ...CLOTHES, intro: 'Вступление с сервера' };
+    const view = render(<HardQuestionThemePage />);
+    await chooseInThemeMenu('hardQuestions.theme.edit');
+    await screen.findByRole('dialog', { name: 'hardQuestions.theme.editTitle' });
+    mockThemes = [];
+    mockDocument = null;
+    mockPresence = { kind: 'absent' };
+    view.rerender(<HardQuestionThemePage />);
+    const dialog = screen.getByRole('dialog', { name: 'hardQuestions.theme.editTitle' });
+    expect(within(dialog).getByText('dataSync.phase.deleted')).toBeInTheDocument();
+    expect(within(dialog).queryByRole('button', { name: 'hardQuestions.draft.copy' })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'common.save' })).toBeDisabled();
   });
 
   it('a theme removed elsewhere shows the words its form left unsent on this device, to copy (Codex review 2026-11-27)', () => {

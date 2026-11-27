@@ -11075,3 +11075,11 @@ The final gate passed 1,215 targeted tests, a further page run with the added dr
 A disagreement over both the order and the contents of a theme list now displays independent decisions for the order and each disputed row field. The exact choices and later unsent requests already shown in that draft are captured atomically. An already captured form Save can join that result while its newer private words stay in the form until the next ordinary Save. The old editor no longer recovers a rejected text, and a newer stored revision requires fresh choices.
 
 The final gate passed 1,223 targeted tests, TypeScript, changed-file ESLint without errors, the local production build, and independent source review. Hidden Chrome showed both combinations at 390 and 1280 px using the real theme page and isolated Auth and Firestore. It reopened the chosen order and text at revision 3. See `artifacts/hard-question-compound-order-20261127` in the local case. The separate theme-deletion presentation issue and the combined top-level chronology case remain in BUGS.md.
+
+## BUG-20261127-hard-question-theme-deletion-hides-open-words · Keep an open theme draft available
+
+In Hard questions, open a theme and edit its title or opening words. Deleting the theme in a second browser used to unmount the editor when the theme disappeared from the list. The same editor now stays open with selectable words, a Copy button, and disabled Save. The confirmed removal takes precedence over a stale list. An unchanged form reports the removal without offering an unsaved copy.
+
+Both new regressions failed on `f349fa7ab`. The final 88 related tests, production-mode build with TypeScript, scoped ESLint without errors, and independent review passed. Hidden Chrome at 390 and 1280 px copied the exact words, kept them available after reload, and made no writes after the other client deleted the theme. Firestore recorded a deletion at revision 2. Screenshots and local emulator logs are in `artifacts/hard-question-gone-theme-20261127`.
+
+After an authorized rollout, repeat using a disposable theme in the same test account on two browsers. Keep editing open in one, delete in the other, and confirm that Copy and reload preserve the exact draft and the theme stays deleted.

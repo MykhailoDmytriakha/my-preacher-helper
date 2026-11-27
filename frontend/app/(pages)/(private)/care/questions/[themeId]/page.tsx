@@ -120,16 +120,24 @@ function ThemeWorkspace({ themeId }: { themeId: string }) {
   const failed = () => toast.error(t('hardQuestions.saveFailed'));
   const attempt = (work: Promise<unknown>) => { void work.catch(failed); };
 
-  if (!view) {
-    const absent = document.presence.kind === 'absent' || document.presence.kind === 'deleting';
-    return (
+  const gone = document.presence.kind === 'absent';
+  const withThemeEditor = (page: ReactNode) => (
+    <>
+      {page}
+      {dialog?.kind === 'edit' && <ThemeEditDialog themeId={themeId} recoverId={dialog.recoverId} gone={gone} onClose={() => setDialog(null)} />}
+    </>
+  );
+
+  if (gone || !view) {
+    const absent = gone || document.presence.kind === 'deleting';
+    return withThemeEditor(
       <div className="mx-auto w-full max-w-4xl">
         <div>
           <RecordUnavailable presence={document.presence} checking={!absent && (document.loading || section.loading)} pageLoading={document.loading || section.loading}
             onBack={() => router.push(sectionPath)} onRetry={() => document.retry()} />
           {/* A theme removed elsewhere keeps the words its form left unsent here, to copy — as the question's and the
               basis's pages do (Codex review 2026-11-27). */}
-          {absent && <OrphanDraftWords resource={resource} slot={THEME_FORM_SLOT} selection={THEME_FORM_FIELDS} />}
+          {absent && dialog?.kind !== 'edit' && <OrphanDraftWords resource={resource} slot={THEME_FORM_SLOT} selection={THEME_FORM_FIELDS} />}
         </div>
       </div>
     );
@@ -158,7 +166,7 @@ function ThemeWorkspace({ themeId }: { themeId: string }) {
   };
 
   let number = 0;
-  return (
+  return withThemeEditor(
     <div className="mx-auto w-full max-w-4xl pb-10">
       <BackLink href={sectionPath}>{t('hardQuestions.title')}</BackLink>
       <EngineReadingStatus document={document} onReview={() => setDialog({ kind: 'edit' })}
@@ -321,7 +329,6 @@ function ThemeWorkspace({ themeId }: { themeId: string }) {
           }} />
       )}
       {dialog?.kind === 'edit-basis' && <EditBasisDialog themeId={themeId} basisId={dialog.basisId} reviewRequestId={dialog.requestId} onClose={() => setDialog(null)} />}
-      {dialog?.kind === 'edit' && <ThemeEditDialog themeId={themeId} recoverId={dialog.recoverId} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'group' && (
         <GroupDialog initialTitle={dialog.title} groupId={dialog.groupId} groups={theme.groups ?? []} onClose={() => setDialog(null)} onSave={async (title) => {
           try {
