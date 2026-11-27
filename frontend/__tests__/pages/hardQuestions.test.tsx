@@ -92,6 +92,7 @@ jest.mock('@/data-engine/react.client', () => ({
   readHardQuestionBasisConflict: () => mockBasisConflictId ? { id: mockBasisConflictId, requestId: mockAnsweredOperation } : undefined,
   hasHardQuestionFieldConflict: () => mockConflictPaths.some(path => ['title', 'short', 'detail', 'differ', 'intro', 'alternates', 'scriptureRefs', 'basisIds'].includes(path[0])),
   DataDocumentProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  useDataEngine: () => ({ browser: null, owner: 'u', failures: {} }),
   useDataDocument: () => ({
     data: mockDocument, presence: mockPresence, status: mockConflictPaths.length ? { phase: 'conflict', canKeepLocal: true, canAcceptRemote: true } : null,
     state: { checkpoint: { conflicts: mockConflictPaths.map(path => ({ path })) },

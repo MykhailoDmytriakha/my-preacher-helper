@@ -20,6 +20,7 @@ let mockThemesComplete = true;
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'pastor' } }) }));
 jest.mock('@/utils/clientId', () => ({ newClientId: () => `new-${++mockIds}` }));
 jest.mock('@/data-engine/react.client', () => ({
+  readHardQuestionRankOpening: jest.requireActual<typeof import('@/data-engine/react.client')>('@/data-engine/react.client').readHardQuestionRankOpening,
   isLiveCollectionDocument: (row: Row) => Boolean(row.value) && !row.deleting,
   useDataCollection: (collection: string | null) => ({
     loading: false,

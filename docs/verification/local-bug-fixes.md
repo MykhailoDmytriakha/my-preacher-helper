@@ -11109,3 +11109,11 @@ The original change `f4672351a` and the HTML-tree parser `fc80888b6` are in both
 Headless Chrome opened a synthetic sermon in Plan → From note on the isolated Auth and Firestore emulators, checked the table and surrounding text in the page, and downloaded the DOCX from the Word button without issuing a write. The Word XML contained three rows, four columns with an empty first cell, both recipient headings, a break inside the final cell of the second row, the two-column `Вместе` cell, and prose on each side. The literal entity was absent. The rendered document was visually inspected on both pages. The Next.js samples were 306–355 MiB and all seven test ports were released. The owner's check on the original sermon remains in BUGS.md.
 
 Local case evidence: `artifacts/word-exact-20261127/`.
+
+## Hard Questions · Repair the full-suite failures
+
+The full Jest run on `89e2b50ce` reported 45 failing tests across two suites. The Hard Questions page fixture did not provide the engine context queried by the returned-work notices. The architecture test detected a direct runtime import of internal rank evidence by the screen hook. The hook now reads the same evidence through the existing public React engine module. Its test uses that implementation, and the page mock models an engine with no local returned work.
+
+The same two suites and three focused rank suites passed with 100 tests. Strict TypeScript passed. Scoped ESLint had zero errors and 13 existing warnings in the React engine module. A clean build powered three headless Chrome runs on loopback emulators. Reordering questions on desktop and at 390 px, and reordering themes on desktop, each produced one acknowledged command and retained the order after reload. Visual checks confirmed both lists. Next.js used 370–383 MiB during the runs, and all seven ports were released.
+
+Local case evidence: `artifacts/hard-questions-gates-20261127/`.

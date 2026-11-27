@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 
-import { hardQuestionRankOpening, type HardQuestionRankCollection, type HardQuestionRankScope } from '@/data-engine/hardQuestionRankOrder';
-import { isLiveCollectionDocument, useDataCollection, useDocumentActions } from '@/data-engine/react.client';
+import { isLiveCollectionDocument, readHardQuestionRankOpening, useDataCollection, useDocumentActions } from '@/data-engine/react.client';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useAuth } from '@/providers/AuthProvider';
 import { newClientId } from '@/utils/clientId';
@@ -14,6 +13,7 @@ import {
 import { rankForAppend, sortByRank } from '@/utils/listRank';
 import { awaitWriteOperation, type WriteOperation } from '@/utils/recoverableWrite';
 
+import type { HardQuestionRankCollection, HardQuestionRankScope } from '@/data-engine/hardQuestionRankOrder';
 import type { HardQuestionPlacementOpening } from '@/data-engine/react.client';
 import type { DocumentData } from '@/data-engine/types';
 import type { HardQuestion, HardQuestionBasis, HardQuestionGroup, HardQuestionTheme } from '@/models/models';
@@ -229,7 +229,7 @@ export function useHardQuestions() {
     try {
       if (!atomic) await save(changes[0].id, changes[0].rank);
       else {
-        const openings = new Map(ordered.map(item => [item.id, hardQuestionRankOpening(item)]));
+        const openings = new Map(ordered.map(item => [item.id, readHardQuestionRankOpening(item)]));
         const changed = new Set(changes.map(change => change.id));
         const order = repair?.order ?? moveInList(ordered, movedId, target)!;
         const movedIndex = repair?.movedIndex ?? order.findIndex(item => item.id === movedId);

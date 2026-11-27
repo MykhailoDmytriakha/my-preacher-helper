@@ -48,6 +48,7 @@ import { hardQuestionBasisConflict, hasHardQuestionBasisReview } from './hardQue
 import { hardQuestionField, hasHardQuestionListReview } from './hardQuestionFieldAction';
 import { readHardQuestionPlacementConflict } from './hardQuestionPlacement';
 import { readHardQuestionPlacementReview as placementReview } from './hardQuestionPlacementChoice';
+import { hardQuestionRankOpening } from './hardQuestionRankOrder';
 import { readHardQuestionThemeOrderReview as readThemeOrderReview, type HardQuestionThemeOrderChoices } from './hardQuestionThemeOrderReview';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
 import { ARCHIVED_COLLECTIONS, isEngineOwnedLegacyMutation, isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
@@ -210,6 +211,9 @@ export function readDocumentTextComparison(checkpoint: SessionCheckpoint) { retu
 export const isChurchValue: typeof churchValue = churchValue;
 export function churchFieldWords(value: unknown): string | undefined { return churchWords(value); }
 export type { HardQuestionPlace, HardQuestionPlacementOpening } from './hardQuestionPlacement';
+export function readHardQuestionRankOpening(value: Parameters<typeof hardQuestionRankOpening>[0]) {
+  return hardQuestionRankOpening(value);
+}
 export function readHardQuestionPlacementReview(checkpoint: SessionCheckpoint) { return placementReview(checkpoint); }
 export function readHardQuestionThemeOrderReview(checkpoint: SessionCheckpoint) {
   return readThemeOrderReview(checkpoint);
