@@ -10755,6 +10755,8 @@ Three tests reproduced the old behavior before the fix. One additional regressio
 
 Hidden Chrome on isolated Auth and Firestore reproduced the extra warning on the previous revision. The fixed revision showed only the actual description decision. The first command changed the description alone and kept the meeting list absent. A separate location edit created the first meeting with an empty date. Both fields persisted on reload. Visual evidence, command paths, and standby cleanup are in `artifacts/legacy-group-meeting-warning-20261125/`.
 
+Recheck on `ea6774714`: 237 focused tests and a production-mode local build passed. Hidden Chrome showed one decision for the differing description, kept the meeting list absent when that decision was saved, and then saved the location of the first undated meeting in a separate command. Its date, location, identity and the chosen description survived a reload. New captures and the released ports are recorded in the case subfolder `artifacts/legacy-group-meeting-warning-20261125/recheck-ea6774714`.
+
 After an authorized rollout, repeat on disposable group data with a legacy draft, confirm the description choice, and add the location of an undated first meeting.
 
 ## BUG-20261117-scripture-list-split-by-emphasis · Preserve Scripture lists through Markdown emphasis
