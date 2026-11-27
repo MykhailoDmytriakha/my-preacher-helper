@@ -89,8 +89,6 @@
 **A — видны всегда (поражено):**
 | место | экран и предмет | что видно |
 |---|---|---|
-| `frontend/app/(pages)/(private)/care/orders/[id]/page.tsx:1072` | Служение, каждый шаг | 🗑 |
-| `frontend/app/(pages)/(private)/care/council/[id]/page.tsx:1004,845,947` | Совет, каждая тема, пока совет готовится | «Изменить», «Внести / изменить итог» |
 | `frontend/app/(pages)/(private)/sermons/[id]/plan/manual/page.tsx:196,227` (`NodeControls.tsx:117`) | План «От руки», каждый пункт и подпункт | 🗑 |
 | `frontend/app/components/column/OutlinePointCard.tsx:355` | Структура, боковая панель, каждый пункт | 🗑 |
 | `frontend/app/components/column/SubPointList.tsx:116` · `frontend/app/components/plan-editor/OutlineBoard.tsx:645` | Подпункты в структуре и в редакторе плана | ✎ и 🗑 притушены до 40 %, а не спрятаны; фокус их не показывает |

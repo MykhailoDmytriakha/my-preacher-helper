@@ -79,11 +79,39 @@ beforeEach(() => {
 });
 
 describe('carrying a section from a held council through the engine', () => {
-  it('routes held-outcome editing through the pinned engine form', () => {
+  it('reveals the held topic outcome edit with its own card and keeps carry visible', () => {
     state.councils = [state.council!];
     render(<CouncilDetailPage />);
-    fireEvent.click(screen.getByRole('button', { name: 'council.topic.editOutcome' }));
+    const card = screen.getByTestId('council-topic-topic-1');
+    const edit = screen.getByRole('button', { name: 'council.topic.editOutcome' });
+    expect(card).toHaveClass('row');
+    expect(card).toContainElement(edit);
+    expect(edit).toHaveClass('actions');
+    expect(carryButton()).not.toHaveClass('actions');
+
+    fireEvent.click(edit);
     expect(screen.getByTestId('engine-outcome-form')).toHaveTextContent('source/topic-1');
+  });
+
+  it('keeps the open outcome panel closable without hovering over the topic', () => {
+    state.council = council('source', 'preparing', [topic]);
+    state.councils = [state.council];
+    render(<CouncilDetailPage />);
+    const card = screen.getByTestId('council-topic-topic-1');
+    const edit = screen.getByTestId('council-topic-edit-topic-1');
+    const outcome = screen.getByTestId('council-topic-outcome-topic-1');
+    expect(card).toHaveClass('row');
+    expect(card).toContainElement(edit);
+    expect(card).toContainElement(outcome);
+    expect(edit).toHaveClass('actions');
+    expect(outcome).toHaveClass('actions');
+
+    fireEvent.click(outcome);
+    expect(outcome).toHaveAttribute('aria-expanded', 'true');
+    expect(outcome).not.toHaveClass('actions');
+    fireEvent.click(outcome);
+    expect(outcome).toHaveAttribute('aria-expanded', 'false');
+    expect(outcome).toHaveClass('actions');
   });
   it('asks where when two councils are being prepared, and carries on the second press', async () => {
     state.councils = [state.council!, council('target-a', 'preparing'), council('target-b', 'preparing')];

@@ -45,6 +45,7 @@ import { Chip } from '@/components/ui/Chip';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import DatePickerField from '@/components/ui/DatePickerField';
 import { DocumentMetadataHistory } from '@/components/ui/DocumentMetadataHistory';
+import hoverActions from '@/components/ui/HoverActions.module.css';
 import { LiveTextArea, LiveTextInput } from '@/components/ui/LiveTextInput';
 import { ReorderArrows } from '@/components/ui/ReorderArrows';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
@@ -719,7 +720,7 @@ function TopicCard({
   const isBare = !topic.summary && topic.questions.length === 0 && (info || topic.options.length === 0);
 
   return (
-    <article className={cardClass} data-testid={`council-topic-${topic.id}`}>
+    <article className={`${cardClass} ${hoverActions.row}`} data-testid={`council-topic-${topic.id}`}>
       <div className="flex items-start gap-3">
         <span className={`mt-0.5 w-6 shrink-0 text-sm font-extrabold ${tone.count}`}>{index}</span>
         <div className="min-w-0 flex-1">
@@ -847,7 +848,7 @@ function TopicCard({
                     {!readOnly && <button
                       type="button"
                       onClick={() => setEnteringOutcome((value) => !value)}
-                      className={`${buttonText} shrink-0 ${enteringOutcome ? '' : 'text-indigo-700 dark:text-indigo-300'}`}
+                      className={`${buttonText} shrink-0 ${enteringOutcome ? '' : `${hoverActions.actions} text-indigo-700 dark:text-indigo-300`}`}
                       aria-expanded={enteringOutcome}
                       data-testid={`council-topic-outcome-${topic.id}`}
                     >
@@ -945,7 +946,7 @@ function TopicCard({
                         )}
                       </div>
                       {!readOnly && <div className="ml-auto flex max-w-full shrink-0 flex-col items-end gap-1">
-                        <button type="button" onClick={startOutcomeEdit} className={buttonText}>
+                        <button type="button" onClick={startOutcomeEdit} className={`${buttonText} ${hoverActions.actions}`}>
                           <Pencil className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
                           {t('council.topic.editOutcome')}
                         </button>
@@ -1002,7 +1003,7 @@ function TopicCard({
 
               {editable && (
                 <div className="mt-3 flex justify-end">
-                  <button type="button" onClick={onEdit} className={buttonText} data-testid={`council-topic-edit-${topic.id}`}>
+                  <button type="button" onClick={onEdit} className={`${buttonText} ${hoverActions.actions}`} data-testid={`council-topic-edit-${topic.id}`}>
                     <Pencil className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
                     {t('council.topic.edit')}
                   </button>
