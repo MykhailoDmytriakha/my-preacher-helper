@@ -7,6 +7,7 @@ import { groupMeetingDay } from '@/utils/groupMeeting';
 import { SERVICE_ORDER_CATALOG } from '@/utils/serviceOrderCatalog';
 import { preservesStudyAnalysisSource } from '@/utils/studyAnalysisSource';
 
+import { keepsBasisScripture } from './hardQuestionThemeLists';
 import { childIdentityIssue, childIdentityIssues, keepsExistingChildIdentities } from './legacyChildIdentity';
 
 import type { DocumentData } from './types';
@@ -195,6 +196,9 @@ export function validateResourceDocument(collection: string, value: DocumentData
   }
   if (collection === 'studyNotes' && !preservesStudyAnalysisSource(options.previous, value)) invalid('An analysis must keep its original word source');
   validateGroupMeetingDays(collection, value, options, fields);
+  if (collection === 'hardQuestionThemes' && fields.includes('bases') && !keepsBasisScripture(options.previous?.bases, value.bases)) {
+    invalid('A changed basis needs at least one readable place of Scripture');
+  }
   if (options.kind === 'create' && collection === 'sermons') {
     if (Array.isArray(value.sourceNoteIds) && value.sourceNoteIds.length > 20) invalid('Too many source notes at birth');
     if (Array.isArray(value.scratch) && value.scratch.length > 300) invalid('Too many scratch notes at birth');

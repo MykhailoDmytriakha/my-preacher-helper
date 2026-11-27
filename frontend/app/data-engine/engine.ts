@@ -3871,12 +3871,16 @@ export class DataEngine {
         const privateStage = shown.dirty && predecessor && predecessor.id !== request.id
           ? { scopeId: shown.record.scopeId, generation: shown.record.generation, predecessorId: predecessor.id, base: predecessor.value, value: shown.value }
           : undefined;
-        const hardQuestionFieldReview = comparison?.hardQuestionFields && {
-          fields: choice === 'local' ? comparison.hardQuestionFields : [], original: request.hardQuestionFieldActions ?? {},
+        const hardQuestionReview = comparison && (comparison.hardQuestionFields || comparison.basisScripture) ? {
           scopeId: shown.record.scopeId,
-        };
+          basis: comparison.basisScripture && { id: comparison.basisScripture.id,
+            fields: comparison.basisScripture.otherFields.map(item => item.field), removed: comparison.basisScripture.removed },
+          text: comparison.hardQuestionFields && {
+            fields: choice === 'local' ? comparison.hardQuestionFields : [], original: request.hardQuestionFieldActions ?? {},
+          },
+        } : undefined;
         await controller.resolveExactManualChoice({ choice, titles, request, stored, value: exactManualWords(shown, request), selection, privateStage,
-          hardQuestionFieldReview, choiceTime: action?.kind === 'document-metadata' ? action.time : undefined }, () => {
+          hardQuestionReview, choiceTime: action?.kind === 'document-metadata' ? action.time : undefined }, () => {
           active(); assertComparison();
           const current = scope.getState();
           const reviewed = exactRequest(current, controller.getState().checkpoint);
@@ -3884,7 +3888,7 @@ export class DataEngine {
             || current.record.generation !== shown.record.generation || !equalValues(current.value, shown.value)) throw Object.assign(new Error('The shown saved copy changed'), { code: 'decision-changed' });
         });
         active();
-        if (hardQuestionFieldReview) {
+        if (hardQuestionReview) {
           this.prepareCommitsInBackground(); this.backgroundDrain();
         } else if (choice === 'local' || controller.getState().checkpoint.dirty) {
           const positionReview = request.result?.kind === 'conflict' ? reviewedHomileticList(
@@ -3921,8 +3925,8 @@ export class DataEngine {
           await scope.suspend();
           return;
         }
-        if (hardQuestionFieldReview) {
-          await scope.continueAfterChoice(capture(), request.id); active();
+        if (hardQuestionReview) {
+          await scope.continueAfterChoice(capture(), request.id, hardQuestionReview.basis?.removed); active();
           return;
         }
         await scope.cancel(); active();

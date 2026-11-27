@@ -56,6 +56,24 @@ describe('hard questions on the engine', () => {
     expect(() => validateResourceDocument('hardQuestionThemes', theme({ color: 'red' }), { kind: 'create' })).toThrow('Unknown field in new document');
   });
 
+  it.each([undefined, [], ['John 99:1']])('requires a new basis to have a readable place (%j)', (scriptureRefs) => {
+    expect(() => validateResourceDocument('hardQuestionThemes',
+      theme({ bases: [{ id: 'b1', title: 'Basis', ...(scriptureRefs && { scriptureRefs }) }] }), { kind: 'create' }))
+      .toThrow('Scripture');
+  });
+
+  it('does not require adding references to a legacy basis that was only reordered', () => {
+    const old = { id: 'legacy', title: 'Legacy basis' };
+    const current = { id: 'newer', title: 'Newer basis', scriptureRefs: ['Ів 3:16'] };
+    const opening = theme({ bases: [old, current] });
+    const next = { kind: 'update', previous: opening, changedFields: ['bases'] } as const;
+    expect(() => validateResourceDocument('hardQuestionThemes', theme({ bases: [current, old] }), next)).not.toThrow();
+    expect(() => validateResourceDocument('hardQuestionThemes',
+      theme({ bases: [current, { ...old, text: 'New words' }] }), next)).toThrow('Scripture');
+    expect(() => validateResourceDocument('hardQuestionThemes',
+      theme({ bases: [current, { ...old, scriptureRefs: ['Ин 3:16'] }] }), next)).not.toThrow();
+  });
+
   it('keeps a question answered in full and a question written down to be answered later, with no theme', () => {
     expect(() => validateResourceDocument('hardQuestions', question(), { kind: 'create' })).not.toThrow();
     const waiting = { userId: 'owner', title: 'Можно ли ЭКО?', rank: 1000, createdAt: 'n', updatedAt: 'n' };

@@ -65,8 +65,15 @@ type Doc = Record<string, unknown> | null;
 let mockDocument: Doc = null;
 let mockPresence: { kind: string } = { kind: 'present' };
 let mockConflictPaths: readonly (readonly string[])[] = [];
+let mockBasisConflictId: string | undefined;
+let mockAnsweredOperation: string | undefined;
+type BasisFormCopy = { scopeId: string; record: { predecessor: { id: string }; savedGeneration: number | null } };
+let mockFormCopies: BasisFormCopy[] = [];
+let mockPendingFormCopies: Promise<BasisFormCopy[]> | undefined;
+let mockFormDirty = false;
 let mockComparison: {
-  identity: string; hardQuestionFields: readonly string[]; conflictPaths: readonly (readonly string[])[];
+  identity: string; hardQuestionFields?: readonly string[]; conflictPaths: readonly (readonly string[])[];
+  basisScripture?: { id: string; mine: string[]; stored: string[] };
   mine: Record<string, unknown>; stored: { value: Record<string, unknown>; resource: { collection: string } };
 } | null = null;
 let mockDraftChoices: { id: string }[] = [];
@@ -74,18 +81,20 @@ const mockFormSave = jest.fn((_updater?: (draft: Record<string, unknown>) => Rec
 const mockFormUpdate = jest.fn((_updater: (draft: Record<string, unknown>) => Record<string, unknown>) => Promise.resolve());
 const mockRecover = jest.fn((_id: string) => Promise.resolve());
 jest.mock('@/data-engine/react.client', () => ({
+  readHardQuestionBasisConflict: () => mockBasisConflictId ? { id: mockBasisConflictId, requestId: mockAnsweredOperation } : undefined,
   hasHardQuestionTextConflict: () => mockConflictPaths.some(path => ['title', 'short', 'detail', 'differ', 'intro'].includes(path[0])),
   DataDocumentProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useDataDocument: () => ({
     data: mockDocument, presence: mockPresence, status: mockConflictPaths.length ? { phase: 'conflict' } : null,
-    state: { checkpoint: { conflicts: mockConflictPaths.map(path => ({ path })) } }, error: null, readOnly: false, loading: false,
+    state: { checkpoint: { conflicts: mockConflictPaths.map(path => ({ path })) },
+      result: mockAnsweredOperation ? { kind: 'conflict', operationId: mockAnsweredOperation } : undefined }, error: null, readOnly: false, loading: false,
     recoveryIdentity: {}, retry: jest.fn(), keepLocal: jest.fn(), acceptRemote: jest.fn(),
   }),
   useDataForm: () => ({
-    data: mockDocument, loading: false, active: true, readOnly: false, dirty: false, busy: false, status: null, comparison: mockComparison, error: null,
+    data: mockDocument, loading: false, active: true, readOnly: false, dirty: mockFormDirty, busy: false, status: null, comparison: mockComparison, error: null,
     recoveryIdentity: {}, recoveryReady: true, recoveryVersion: '', exactChoice: Boolean(mockComparison), begin: () => Promise.resolve(), update: mockFormUpdate,
     save: mockFormSave, cancel: () => Promise.resolve(), recover: mockRecover, retry: jest.fn(), keepLocal: jest.fn(), acceptRemote: jest.fn(),
-    listRecoverable: () => Promise.resolve([]), discardRecovery: jest.fn(), captureDocumentMetadataAction: () => ({ documentMetadata: { time: null } }),
+    listRecoverable: () => mockPendingFormCopies ?? Promise.resolve(mockFormCopies), discardRecovery: jest.fn(), captureDocumentMetadataAction: () => ({ documentMetadata: { time: null } }),
   }),
   useRecoveryDiscovery: () => ({ choices: mockDraftChoices, loading: false, error: null, recover: jest.fn(), discard: jest.fn() }),
 }));
@@ -132,6 +141,11 @@ beforeEach(() => {
   mockPresence = { kind: 'present' };
   mockDraftChoices = [];
   mockConflictPaths = [];
+  mockBasisConflictId = undefined;
+  mockAnsweredOperation = undefined;
+  mockFormCopies = [];
+  mockPendingFormCopies = undefined;
+  mockFormDirty = false;
   mockComparison = null;
   mockComplete = true;
   mockThemes = [CLOTHES];
@@ -291,6 +305,54 @@ describe('a theme', () => {
     expect(within(dialog).getByText('Сохранённое вступление')).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: 'common.save' })).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'dataSync.versionComparison' })).not.toBeInTheDocument();
+  });
+
+  it('opens a basis reference comparison from its theme and shows the compared places', () => {
+    mockDocument = { ...CLOTHES };
+    mockConflictPaths = [['bases', 'id:b1', 'scriptureRefs']];
+    mockBasisConflictId = 'b1';
+    mockComparison = {
+      identity: 'basis scripture review', conflictPaths: mockConflictPaths,
+      basisScripture: { id: 'b1', mine: ['Ин 3:16'], stored: ['Ин 3:17'] },
+      mine: mockDocument, stored: { value: mockDocument, resource: { collection: 'hardQuestionThemes' } },
+    };
+    render(<HardQuestionThemePage />);
+    fireEvent.click(screen.getByRole('button', { name: 'dataSync.versionComparison' }));
+    const dialog = screen.getByRole('dialog', { name: 'hardQuestions.basis.editTitle' });
+    expect(within(dialog).getByText('Ин 3:16')).toBeInTheDocument();
+    expect(within(dialog).getByText('Ин 3:17')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'common.save' })).toBeDisabled();
+  });
+
+  it('returns to the exact saved reference comparison after the form was reopened', async () => {
+    mockDocument = { ...CLOTHES };
+    mockConflictPaths = [['bases', 'id:b1', 'scriptureRefs']];
+    mockBasisConflictId = 'b1';
+    mockAnsweredOperation = 'refused-places';
+    mockFormCopies = [
+      { scopeId: 'another-draft', record: { predecessor: { id: 'different-request' }, savedGeneration: 3 } },
+      { scopeId: 'form-reopen-without-save', record: { predecessor: { id: 'refused-places' }, savedGeneration: null } },
+      { scopeId: 'form-that-saved', record: { predecessor: { id: 'refused-places' }, savedGeneration: 4 } },
+    ];
+    render(<HardQuestionThemePage />);
+    fireEvent.click(screen.getByRole('button', { name: 'dataSync.versionComparison' }));
+    await waitFor(() => expect(mockRecover).toHaveBeenCalledWith('form-that-saved'));
+    expect(mockRecover).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps words typed while the saved basis comparison is being found', async () => {
+    mockDocument = { ...CLOTHES };
+    mockConflictPaths = [['bases', 'id:b1', 'scriptureRefs']];
+    mockBasisConflictId = 'b1';
+    mockAnsweredOperation = 'refused-places';
+    let answer!: (sources: BasisFormCopy[]) => void;
+    mockPendingFormCopies = new Promise(resolve => { answer = resolve; });
+    const page = render(<HardQuestionThemePage />);
+    fireEvent.click(screen.getByRole('button', { name: 'dataSync.versionComparison' }));
+    mockFormDirty = true;
+    page.rerender(<HardQuestionThemePage />);
+    await act(async () => answer([{ scopeId: 'old form', record: { predecessor: { id: 'refused-places' }, savedGeneration: 4 } }]));
+    expect(mockRecover).not.toHaveBeenCalled();
   });
 
   it('a basis card\'s places open in the verse window, while the card itself still opens the basis', () => {

@@ -14,7 +14,7 @@ import {
   BackLink, BASIS_DOT, basisPath, DANGER_BUTTON, HelpMark, ListLabel, PANEL, PRIMARY_BUTTON, questionPath, QuestionRow, QUIET_BUTTON, QUIET_PRESSED,
   sectionPath,
 } from '@/components/hardQuestions/parts';
-import { NewBasisDialog, THEME_FORM_FIELDS, THEME_FORM_SLOT, ThemeEditDialog } from '@/components/hardQuestions/themeForms';
+import { EditBasisDialog, NewBasisDialog, THEME_FORM_FIELDS, THEME_FORM_SLOT, ThemeEditDialog } from '@/components/hardQuestions/themeForms';
 import { EngineReadingStatus, OrphanDraftWords, UnsavedDraftNotice, useRouteSegment } from '@/components/hardQuestions/useEngineForm';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { usePublishShellTitle } from '@/components/navigation/shellTitles';
@@ -37,6 +37,7 @@ type Dialog =
   | { kind: 'edit'; recoverId?: string }
   | { kind: 'group'; groupId?: string; title?: string }
   | { kind: 'basis' }
+  | { kind: 'edit-basis'; basisId: string; requestId?: string }
   | { kind: 'remove' };
 
 /**
@@ -160,7 +161,9 @@ function ThemeWorkspace({ themeId }: { themeId: string }) {
   return (
     <div className="mx-auto w-full max-w-4xl pb-10">
       <BackLink href={sectionPath}>{t('hardQuestions.title')}</BackLink>
-      <EngineReadingStatus document={document} onReview={() => setDialog({ kind: 'edit' })} reviewing={dialog?.kind === 'edit'} />
+      <EngineReadingStatus document={document} onReview={() => setDialog({ kind: 'edit' })}
+        onReviewBasis={(basisId, requestId) => setDialog({ kind: 'edit-basis', basisId, requestId })}
+        reviewing={dialog?.kind === 'edit' || dialog?.kind === 'edit-basis'} />
       <DataCollectionStatus state={section.questionsState} />
       {!document.readOnly && dialog?.kind !== 'edit' && (
         <UnsavedDraftNotice resource={resource} slot={THEME_FORM_SLOT} selection={THEME_FORM_FIELDS} onResume={(draftId) => setDialog({ kind: 'edit', recoverId: draftId })} />
@@ -317,6 +320,7 @@ function ThemeWorkspace({ themeId }: { themeId: string }) {
             } catch { failed(); }
           }} />
       )}
+      {dialog?.kind === 'edit-basis' && <EditBasisDialog themeId={themeId} basisId={dialog.basisId} reviewRequestId={dialog.requestId} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'edit' && <ThemeEditDialog themeId={themeId} recoverId={dialog.recoverId} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'group' && (
         <GroupDialog initialTitle={dialog.title} groupId={dialog.groupId} groups={theme.groups ?? []} onClose={() => setDialog(null)} onSave={async (title) => {

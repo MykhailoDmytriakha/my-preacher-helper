@@ -419,7 +419,7 @@ export class ManualScope {
   dispose(): void { if (!this.options.port.admitSave) this.captures.retire(); this.closed = true; }
 
   /** A document choice retired this form's saved predecessor, not its later unsent words. */
-  continueAfterChoice(captured: ManualCapture, retiredPredecessor: string): Promise<void> {
+  continueAfterChoice(captured: ManualCapture, retiredPredecessor: string, finish = false): Promise<void> {
     this.assertCurrent();
     const capture = copy(captured);
     return this.enqueue(async () => {
@@ -437,7 +437,9 @@ export class ManualScope {
       const draftMatches = before.selection.every((path, index) => equalValues(readSelection(capture.checkpoint.draft, path), selected[index]));
       // A cached copy from before this saved intent cannot prove the remaining stage was accepted.
       const renewed = Boolean(predecessor) || (canReplaceSnapshot(before.baseline, baseline) && !canReplaceSnapshot(baseline, before.baseline));
-      if (draftMatches && (!dirty || (renewed && selected.every((value, index) => equalValues(value, before.savedSelection[index]) || equalValues(value, before.stage[index]))))) {
+      if (finish) {
+        this.record = { ...captureRecord(options, before.generation + 1), active: false };
+      } else if (draftMatches && (!dirty || (renewed && selected.every((value, index) => equalValues(value, before.savedSelection[index]) || equalValues(value, before.stage[index]))))) {
         this.record = { ...captureRecord(options, before.generation + 1), active: before.active,
           ...(before.openingSelection ? { openingSelection: before.openingSelection } : {}), ...(before.recoverySources ? { recoverySources: before.recoverySources } : {}), ...(before.recoveryOrigins ? { recoveryOrigins: before.recoveryOrigins } : {}), ...(dirty ? { stage: before.stage, meetingDateCapture: before.meetingDateCapture, groupMeetingFieldCaptures: before.groupMeetingFieldCaptures,
             outlineSubpointMoves: before.outlineSubpointMoves } : {}) };
@@ -565,7 +567,10 @@ function writeChildSelection(parent: unknown, id: string, rest: ManualPath, valu
   if (indices.length > 1) throw new Error('Ambiguous child identity');
   const index = indices[0] ?? -1;
   if (rest.length) {
-    if (index < 0) throw new Error('Selected child no longer exists');
+    if (index < 0) {
+      if (!value.exists) return;
+      throw new Error('Selected child no longer exists');
+    }
     writeSelection(parent[index], rest, value);
   } else if (!value.exists) {
     if (index >= 0) parent.splice(index, 1);

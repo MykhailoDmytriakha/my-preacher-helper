@@ -1,11 +1,11 @@
 'use client';
 
 import { useParams } from 'next/navigation';
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { toast } from 'sonner';
 
 import { DataSyncStatus, type TextComparison } from '@/data-engine/DataSyncStatus';
-import { hasHardQuestionTextConflict, useDataDocument, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { hasHardQuestionTextConflict, readHardQuestionBasisConflict, useDataDocument, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -35,9 +35,9 @@ const previewOf = (words: readonly string[]) => words.join(' · ').slice(0, 160)
  * (`recovery`), and a change made elsewhere meanwhile is a question, never a silent overwrite.
  * Must stand inside the page's `DataDocumentProvider` for the same document.
  */
-export function useEngineForm(resource: Resource | null, slot: string, selection: Selection, recoveryTitle: string, recoverId?: string | null) {
+export function useEngineForm(resource: Resource | null, slot: string, selection: Selection, recoveryTitle: string, recoverId?: string | null, reviewRequestId?: string) {
   const form = useDataForm(resource, slot, selection);
-  const { loading, begin, active, recover } = form;
+  const { loading, begin, active, recover, comparison, dirty, listRecoverable } = form;
   useEffect(() => { if (!loading && resource) void begin().catch(() => undefined); }, [loading, begin, resource]);
   // Opened to continue unsaved words (`UnsavedDraftNotice`): once the form is open, take that draft back
   // into it. A failure leaves the draft listed in the form's own status, where it can still be recovered.
@@ -47,6 +47,22 @@ export function useEngineForm(resource: Resource | null, slot: string, selection
     recovered.current = recoverId;
     void recover(recoverId).catch(() => undefined);
   }, [recoverId, active, recover]);
+  const reviewed = useRef<string | null>(null);
+  const currentReview = useRef<string | undefined>(undefined);
+  const readyReview = !recoverId && active && !comparison && !dirty ? reviewRequestId : undefined;
+  useLayoutEffect(() => {
+    currentReview.current = readyReview;
+    return () => { currentReview.current = undefined; };
+  }, [readyReview]);
+  useEffect(() => {
+    if (!readyReview || reviewed.current === readyReview) return;
+    reviewed.current = readyReview;
+    // Reopen the actual saved submission, which can be a different form scope after navigation.
+    void listRecoverable().then(sources => {
+      const original = sources.filter(source => source.record.predecessor?.id === readyReview && source.record.savedGeneration !== null);
+      if (original.length === 1 && currentReview.current === readyReview) return recover(original[0].scopeId);
+    }).catch(() => undefined);
+  }, [readyReview, listRecoverable, recover]);
   const recovery = useRecoveryDiscovery({
     identity: form.recoveryIdentity, enabled: !loading && form.recoveryReady, version: form.recoveryVersion,
     // Each copy says what it holds: two copies of one question are told apart by their words (Codex review).
@@ -72,8 +88,24 @@ const themeFieldLabels: Readonly<Record<string, string>> = {
   intro: 'hardQuestions.dialogs.intro',
 };
 
-function hardQuestionTextComparison(comparison: ReturnType<typeof useDataForm>['comparison'],
+function hardQuestionComparison(comparison: ReturnType<typeof useDataForm>['comparison'],
   t: ReturnType<typeof useTranslation>['t']): TextComparison | undefined {
+  if (comparison?.basisScripture) {
+    const { mine, stored, otherFields, removed } = comparison.basisScripture;
+    const places = t('hardQuestions.basis.places');
+    const text = (side: 'mine' | 'stored', refs: string[]) => {
+      const refsText = refs.join('\n') || t('dataSync.emptyField');
+      if (!otherFields?.length) return refsText;
+      return [`${places}\n${refsText}`, ...otherFields.map(field => {
+        const label = t(field.field === 'title' ? 'hardQuestions.basis.fieldTitle' : 'hardQuestions.basis.fieldText');
+        return `${label}\n${field[side] || t('dataSync.emptyField')}`;
+      })].join('\n\n');
+    };
+    return { identity: comparison.identity,
+      ...(removed ? { valueKind: 'removed-row', keepMineDisabled: true } : { valueKind: 'field', scopedChoice: true }),
+      ...(otherFields?.length ? {} : { title: places }), mine: text('mine', mine),
+      stored: removed ? t('hardQuestions.basis.gone') : text('stored', stored) };
+  }
   if (!comparison?.hardQuestionFields?.length) return;
   const labels = comparison.stored.resource.collection === 'hardQuestions' ? questionFieldLabels : themeFieldLabels;
   const fields = [...new Set(comparison.conflictPaths.flatMap(path => path.length === 1 && labels[path[0]] ? path : []))];
@@ -93,19 +125,21 @@ function hardQuestionTextComparison(comparison: ReturnType<typeof useDataForm>['
 }
 
 /** Open the form that owns a text comparison so its exact captured fields are used for the choice. */
-export function EngineReadingStatus({ document, onReview, reviewing = false }: {
-  document: ReturnType<typeof useDataDocument>; onReview: () => void; reviewing?: boolean;
+export function EngineReadingStatus({ document, onReview, onReviewBasis, reviewing = false }: {
+  document: ReturnType<typeof useDataDocument>; onReview: () => void; onReviewBasis?: (basisId: string, requestId?: string) => void; reviewing?: boolean;
 }) {
   const { t } = useTranslation();
-  const reviewInForm = !document.readOnly && document.status?.phase === 'conflict'
-    && document.state && hasHardQuestionTextConflict(document.state.checkpoint);
-  if (reviewInForm && reviewing) return null;
+  const checkpoint = !document.readOnly && document.status?.phase === 'conflict' ? document.state?.checkpoint : undefined;
+  const basis = checkpoint && readHardQuestionBasisConflict(checkpoint, document.state?.result);
+  const review = basis && onReviewBasis ? () => onReviewBasis(basis.id, basis.requestId)
+    : checkpoint && hasHardQuestionTextConflict(checkpoint) ? onReview : undefined;
+  if (review && reviewing) return null;
   return (
     <>
       <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} className="mt-3"
-        onRetry={reviewInForm ? undefined : document.retry} onKeepLocal={reviewInForm ? undefined : () => document.keepLocal()}
-        onAcceptRemote={reviewInForm ? undefined : () => document.acceptRemote()} />
-      {reviewInForm && <button type="button" onClick={onReview} className={QUIET_BUTTON}>{t('dataSync.versionComparison')}</button>}
+        onRetry={review ? undefined : document.retry} onKeepLocal={review ? undefined : () => document.keepLocal()}
+        onAcceptRemote={review ? undefined : () => document.acceptRemote()} />
+      {review && <button type="button" onClick={review} className={QUIET_BUTTON}>{t('dataSync.versionComparison')}</button>}
     </>
   );
 }
@@ -113,7 +147,7 @@ export function EngineReadingStatus({ document, onReview, reviewing = false }: {
 /** The form's one voice about its delivery: queued, refused, changed elsewhere, words to recover. */
 export function EngineFormStatus({ form, recovery, className }: ReturnType<typeof useEngineForm> & { className?: string }) {
   const { t } = useTranslation();
-  const comparison = hardQuestionTextComparison(form.comparison, t);
+  const comparison = hardQuestionComparison(form.comparison, t);
   return (
     <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error} errorWords={form.errorWords} className={className}
       comparison={comparison} onRetry={form.retry}

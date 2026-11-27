@@ -34,7 +34,7 @@ import { outlineTitleChoiceFrames, prepareOutlineTitleEdit, readOutlineTitleComp
 import { chooseLocalPreachDateEdits, isOrderedPreachDateField, preachDateChoiceFrames } from './preachDateChoice';
 import { readPrivateDocumentReview } from './privateDocumentReview';
 import { privateFieldDecision, type PrivateFieldDecision } from './privateFieldReview';
-import { equalValues, mergeDocumentAfterAcknowledgement, mergeDocumentFields, mergeFields } from './protocol';
+import { equalValues, mergeDocumentAfterAcknowledgement, mergeDocumentFields, mergeFields, projectHardQuestionThemeOrders } from './protocol';
 import { compactRowTextStamps } from './rowDetailAction';
 import { acknowledgeRowFields, captureRowFields, carryOutlineTitleActions, clearRowFieldDrafts, hasUncapturedAutosaveRowField, matchingRowFields, PREACH_DATE_REVIEW_FIELDS, registerRowFields, retireObservedAutosaveRowFields, rowFieldAckAncestor, stageReviewedCouncilTopics, stageReviewedGroupFlowText, stageReviewedRowFields, stageReviewedOutlineTitleIds, stageReviewedOutlineTitles, stageRowFields, unreadableRowChoice, type UnreadableRowProof } from './rowFieldAutosave';
 import { keepReselectedRowFields } from './rowReselectionChoice';
@@ -1446,9 +1446,11 @@ export class DataSession {
         throw Object.assign(new Error('The removed point contains other changes that need review'), { code: 'other-changes-first' });
       }
       const parentChoice = projectOutlineParentChoice(this.state.confirmed, this.state.draft, candidate, this.state.conflicts, 'local', titles);
-      const chosen = parentChoice ?? chooseLocalPlacement(this.state.confirmed.resource.collection,
-        note.basis, note.draft, candidate.value,
-        merged.value.exists ? merged.value.value as DocumentData : null, mergeFields,
+      const mergedValue = merged.value.exists ? merged.value.value as DocumentData : null;
+      const themeOrder = projectHardQuestionThemeOrders({ ...this.state.confirmed, value: note.basis },
+        note.draft, candidate, this.state.conflicts, 'local', mergedValue);
+      const chosen = parentChoice ?? themeOrder ?? chooseLocalPlacement(this.state.confirmed.resource.collection,
+        note.basis, note.draft, candidate.value, mergedValue, mergeFields,
         localThoughtPlacementChoices(this.state.conflicts, this.state.confirmed.value, this.state.draft, candidate.value));
       const statusChoice = chooseLocalPreachDateEdits({ ...this.state.confirmed, value: note.basis }, note.draft, candidate, preachStatuses);
       const exactLists = keepReviewedAuthoredLists(candidate.resource.collection, statusChoice ?? chosen, this.state.conflicts);

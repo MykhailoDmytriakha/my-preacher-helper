@@ -45,6 +45,7 @@ import { GROUP_MEETING_SLOT as groupMeetingAutosaveSlot, groupMeetingRows as mee
 import { captureGroupStepPlacement as captureGroupPlacement, projectCapturedGroupStep as projectGroupPlacement } from './groupStepPlacement';
 import { readGroupTextReview } from './groupTextReview';
 import { hardQuestionTextField } from './hardQuestionFieldAction';
+import { basisScriptureConflictId } from './hardQuestionThemeLists';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
 import { ARCHIVED_COLLECTIONS, isEngineOwnedLegacyMutation, isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
 import { discoverLegacyRecovery as discoverLegacyOriginals, exportLegacyRecovery as exportLegacyOriginal, type LegacyRecoverySource } from './legacyRecovery.client';
@@ -203,6 +204,14 @@ export function readDocumentTagComparison(checkpoint: SessionCheckpoint) { retur
 export function readDocumentTextComparison(checkpoint: SessionCheckpoint) { return readDocumentTextChoice(checkpoint); }
 export const isChurchValue: typeof churchValue = churchValue;
 export function churchFieldWords(value: unknown): string | undefined { return churchWords(value); }
+export function readHardQuestionBasisConflict(checkpoint: SessionCheckpoint, result?: CommandResult | null) {
+  if (checkpoint.confirmed.resource.collection !== 'hardQuestionThemes') return;
+  const id = checkpoint.conflicts.map(basisScriptureConflictId).find(basisId => basisId !== undefined);
+  if (!id) return;
+  const requestId = result?.kind === 'conflict' && checkpoint.pending[result.operationId]
+    && result.conflicts.some(conflict => basisScriptureConflictId(conflict) === id) ? result.operationId : undefined;
+  return { id, requestId };
+}
 export function hasHardQuestionTextConflict(checkpoint: SessionCheckpoint) {
   return checkpoint.conflicts.some(({ path }) => hardQuestionTextField(checkpoint.confirmed.resource.collection, path));
 }

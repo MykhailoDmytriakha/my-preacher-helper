@@ -55,6 +55,7 @@ function BasisWorkspace({ themeId, basisId }: { themeId: string; basisId: string
   const use = view?.bases.find((item) => item.basis.id === basisId) ?? null;
   const [editing, setEditing] = useState(false);
   const [reviewingTheme, setReviewingTheme] = useState(false);
+  const [reviewBasis, setReviewBasis] = useState<{ id: string; requestId?: string } | null>(null);
   const [recoverId, setRecoverId] = useState<string | null>(null);
   const resource = useMemo(() => ({ collection: 'hardQuestionThemes', id: themeId }), [themeId]);
   const selection = useMemo(() => basisFormFields(basisId), [basisId]);
@@ -111,7 +112,8 @@ function BasisWorkspace({ themeId, basisId }: { themeId: string; basisId: string
   return (
     <div className="mx-auto w-full max-w-4xl pb-10">
       <BackLink href={themePath(themeId)}>{view.theme.title}</BackLink>
-      <EngineReadingStatus document={document} onReview={() => setReviewingTheme(true)} reviewing={reviewingTheme} />
+      <EngineReadingStatus document={document} onReview={() => setReviewingTheme(true)} onReviewBasis={(id, requestId) => setReviewBasis({ id, requestId })}
+        reviewing={reviewingTheme || Boolean(reviewBasis)} />
       {!document.readOnly && !editing && (
         <UnsavedDraftNotice resource={resource} slot={basisFormSlot(basisId)} selection={selection} onResume={(draftId) => { setRecoverId(draftId); setEditing(true); }} />
       )}
@@ -170,6 +172,7 @@ function BasisWorkspace({ themeId, basisId }: { themeId: string; basisId: string
         </section>
       </div>
 
+      {reviewBasis && <EditBasisDialog themeId={themeId} basisId={reviewBasis.id} reviewRequestId={reviewBasis.requestId} onClose={() => setReviewBasis(null)} />}
       {reviewingTheme && <ThemeEditDialog themeId={themeId} onClose={() => setReviewingTheme(false)} />}
       {editing && <EditBasisDialog themeId={themeId} basisId={basisId} recoverId={recoverId} onClose={() => { setEditing(false); setRecoverId(null); }} />}
       {confirmDialog}

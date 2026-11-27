@@ -17,6 +17,7 @@ import { deletionConflicts } from './deletionContent';
 import { equalValues, object, own, readField, writeField } from './fieldValues';
 import { mergeFirstGroupMeeting, mergeFirstGroupMeetingCommand } from './groupFirstMeeting';
 import { groupPlan, groupPlanFields, matchingGroupFlowCopySources, matchingGroupFlowRetirements, mergeGroupPlan } from './groupFlowTopology';
+import { HARD_QUESTION_BASIS_SCRIPTURE, hardQuestionThemeListPath, reviewMergedBasisScripture } from './hardQuestionThemeLists';
 import { mergeIdentityTree } from './identityTreeMerge';
 import { outlinePlacementField } from './outlinePlacementResource';
 import { MAX_OUTLINE_SUBPOINT_MOVES } from './outlineSubpointMove';
@@ -627,6 +628,10 @@ export function mergeFields(base: FieldValue, mine: FieldValue, theirs: FieldVal
 } {
   if (equalValues(mine, base)) return { value: theirs, conflicts: [] };
   if (equalValues(theirs, base) || equalValues(mine, theirs)) return { value: mine, conflicts: [] };
+  if (!base.exists && hardQuestionThemeListPath(path) && Array.isArray(mine.value) && Array.isArray(theirs.value)) {
+    const merged = mergeArrayFields({ exists: true, value: [] }, mine, theirs, path);
+    if (merged) return merged;
+  }
   if (!base.exists && path[0] === 'scratch') {
     // Missing scratch lists have no rows. An already written row with the exact
     // intended words keeps its stored placement, regardless of where it first opened.
@@ -714,6 +719,13 @@ function mergeArrayFields(base: FieldValue, mine: FieldValue, theirs: FieldValue
   const tree = children && mergeIdentityTree(base.value as Json[], mine.value as Json[], theirs.value as Json[], path, children, mergeFields);
   if (tree) return tree;
   const merged = mergeArrays(base.value as Json[], mine.value as Json[], theirs.value as Json[], path);
+  if (!merged && hardQuestionThemeListPath(path)) {
+    const preview = mergeArrays(base.value as Json[], mine.value as Json[], theirs.value as Json[], path, 'local');
+    if (preview) return { value: preview.value, conflicts: [{ path, base, mine, theirs }, ...preview.conflicts] };
+  }
+  if (merged && reviewMergedBasisScripture(path, mine, theirs, merged.value)) {
+    return { value: mine, conflicts: [{ path, code: HARD_QUESTION_BASIS_SCRIPTURE, base, mine, theirs }] };
+  }
   return merged && children ? settleTreeTwins(base, mine, theirs, merged, path, children) : merged;
 }
 
@@ -903,7 +915,8 @@ function mergeObjects(base: DocumentData, mine: DocumentData, theirs: DocumentDa
   return { value: { exists: true, value: result }, conflicts: topicConflict ? replaceCouncilOutcomeConflicts(conflicts, topicConflict) : conflicts };
 }
 
-function mergeArrays(base: Json[], mine: Json[], theirs: Json[], path: string[]): ReturnType<typeof mergeFields> | null {
+function mergeArrays(base: Json[], mine: Json[], theirs: Json[], path: string[],
+  preferred?: 'local' | 'remote'): ReturnType<typeof mergeFields> | null {
   const b = indexed(base), m = indexed(mine), t = indexed(theirs);
   if (!b || !m || !t) return null;
   const retained = [...b.keys()].filter(key => m.has(key) && t.has(key));
@@ -911,20 +924,45 @@ function mergeArrays(base: Json[], mine: Json[], theirs: Json[], path: string[])
   const mineOrder = [...m.keys()].filter(key => retainedKeys.has(key));
   const theirOrder = [...t.keys()].filter(key => retainedKeys.has(key));
   const mineMoved = !equalValues(mineOrder, retained), theirsMoved = !equalValues(theirOrder, retained);
-  if (mineMoved && theirsMoved && !equalValues(mineOrder, theirOrder)) return null;
-  const order = [...new Set([...(mineMoved ? m.keys() : t.keys()), ...m.keys(), ...t.keys()])];
+  if (!preferred && mineMoved && theirsMoved && !equalValues(mineOrder, theirOrder)) return null;
+  const preferMine = preferred ? preferred === 'local' : mineMoved;
+  const order = [...new Set([...(preferMine ? m.keys() : t.keys()), ...m.keys(), ...t.keys()])];
   const result: Json[] = [], conflicts: ConflictDetail[] = [];
   const field = (map: Map<string, Json>, key: string): FieldValue => map.has(key)
     ? { exists: true, value: map.get(key) as Json } : { exists: false };
   for (const key of order) {
-    const merged = mergeFields(field(b, key), field(m, key), field(t, key), [...path, key]);
+    const local = field(m, key), stored = field(t, key);
+    const merged = mergeFields(field(b, key), preferred === 'remote' ? stored : local,
+      preferred === 'remote' ? local : stored, [...path, key]);
     if (merged.value.exists) result.push(merged.value.value as Json);
     conflicts.push(...merged.conflicts);
   }
   const values = new Map(result.map(item => [itemKey(item)!, item]));
-  const mergedKeys = mergedOrder(b, m, t, [...values.keys()], mineMoved);
-  return mergedKeys ? { value: { exists: true, value: mergedKeys.map(key => values.get(key)!) }, conflicts } : null;
+  const mergedKeys = mergedOrder(b, m, t, [...values.keys()], preferMine);
+  // An addition may name incompatible neighbors after two different reorderings.
+  // Keep every merged row in the selected order, with the other additions still present.
+  const keys = mergedKeys ?? (preferred ? [...values.keys()] : null);
+  return keys ? { value: { exists: true, value: keys.map(key => values.get(key)!) }, conflicts } : null;
 }
+
+/** Explicit theme-list choice changes the disputed order while merging the rows by identity. */
+export function projectHardQuestionThemeOrders(opening: ResourceSnapshot, draft: DocumentData | null, stored: ResourceSnapshot | null,
+  conflicts: readonly ConflictDetail[], side: 'local' | 'remote', candidate = stored?.value): DocumentData | undefined {
+  if (opening.resource.collection !== 'hardQuestionThemes' || !opening.value || !draft || !stored?.value || !candidate
+    || opening.metadata?.generation !== stored.metadata?.generation) return;
+  let selected: DocumentData | undefined;
+  for (const { path } of conflicts) {
+    if (!hardQuestionThemeListPath(path)) continue;
+    const base = readField(opening.value, path), mine = readField(draft, path), theirs = readField(stored.value, path);
+    const original = base.exists ? base.value : [];
+    if (!Array.isArray(original) || !Array.isArray(mine.value) || !Array.isArray(theirs.value)) continue;
+    const result = mergeArrays(original, mine.value, theirs.value, path, side);
+    if (result?.conflicts.length) throw Object.assign(new Error('Review the changed basis or group contents first'), { code: 'other-changes-first' });
+    if (result) selected = writeField(selected ?? candidate, path, result.value);
+  }
+  return selected;
+}
+
 
 const sermonAggregate: Record<string, string> = {
   thoughts: 'thoughts', scratch: 'scratch', outline: 'outline', structure: 'thoughts',

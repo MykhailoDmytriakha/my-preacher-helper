@@ -15,7 +15,7 @@ import { keepUncontestedOutlineTitle, readOutlineTitleComparison } from '@/data-
 import { outlinePointGap, outlinePointOrder } from '@/utils/outlineDnd';
 import { stepGap } from '@/utils/serviceOrderStepPlacement';
 
-import type { DataCommand, FieldValue, Json, ResourceSnapshot } from '@/data-engine/types';
+import type { DataCommand, DocumentData, FieldValue, Json, ResourceSnapshot } from '@/data-engine/types';
 import type { SermonOutline } from '@/models/models';
 
 jest.mock('@/data-engine/activation', () => ({ ...jest.requireActual('@/data-engine/activation'), isCollectionServed: jest.fn(() => true) }));
@@ -10394,6 +10394,42 @@ describe('hard-question manual field chronology', () => {
     expect(result).toMatchObject({ kind: 'conflict', snapshot: { value: { [field]: 'Opening' } }, conflicts: [{
       path: [field], base: fieldValue('Opening'), mine: fieldValue('Delayed words'), theirs: fieldValue('Opening'),
     }] });
+  });
+});
+
+describe('Hard Questions theme lists', () => {
+  const owner = 'owner-1';
+  const resource = { collection: 'hardQuestionThemes', id: 'theme-bases' };
+  const opening = { userId: owner, title: 'Theme', rank: 1000, createdAt: '2026-11-25T00:00:00.000Z',
+    updatedAt: '2026-11-25T00:00:00.000Z' };
+  const generation = 'theme-opening';
+  const packet = { protocol: 1, owner, resource, dependsOn: [] } as const;
+  const seed = (value: DocumentData) => processCommand(owner, {
+    ...packet, dependsOn: [], operationId: generation, generation: null, kind: 'create', value: { ...opening, ...value },
+  });
+  const updateLists = (operationId: string, path: 'groups' | 'bases', before: FieldValue, after: FieldValue) =>
+    processCommand(owner, { ...packet, dependsOn: [], generation, operationId, kind: 'update', changes: [{ path: [path], before, after }] });
+  const list = (value: DocumentData[]): FieldValue => ({ exists: true, value });
+
+  it('keeps two independent first groups on a theme created without the groups list', async () => {
+    expect((await seed({})).kind).toBe('acknowledged');
+    const a = { id: 'a', title: 'First group from computer' };
+    const b = { id: 'b', title: 'First group from phone' };
+    const absent = { exists: false } as const;
+    expect((await updateLists('first-group-a', 'groups', absent, list([a]))).kind).toBe('acknowledged');
+    const result = await updateLists('first-group-b', 'groups', absent, list([b]));
+    expect(result).toMatchObject({ kind: 'acknowledged', snapshot: { value: { groups: expect.arrayContaining([a, b]) } } });
+  });
+
+  it('asks before combining two valid reference edits into an empty basis', async () => {
+    const initial = { id: 'b1', title: 'Basis', scriptureRefs: ['John 3:16', 'John 3:17'] };
+    const computer = { ...initial, scriptureRefs: ['John 3:17'] };
+    const phone = { ...initial, scriptureRefs: ['John 3:16'] };
+    expect((await seed({ bases: [initial] })).kind).toBe('acknowledged');
+    expect((await updateLists('places-a', 'bases', list([initial]), list([computer]))).kind).toBe('acknowledged');
+    const result = await updateLists('places-b', 'bases', list([initial]), list([phone]));
+    expect(result).toMatchObject({ kind: 'conflict', snapshot: { value: { bases: [computer] } } });
+    expect((await readDocument(owner, resource)).value?.bases).toEqual([computer]);
   });
 });
 

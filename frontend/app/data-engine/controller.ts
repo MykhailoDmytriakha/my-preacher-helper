@@ -34,6 +34,7 @@ import { captureGroupMeetingReview } from './groupMeetingReview';
 import { retryGroupStepPlacement } from './groupStepPlacement';
 import { groupTextDecision, isGroupStatusComparison, projectGroupTextDecisions, readGroupFlowTextChoice, readGroupTextReview, sameGroupText, writeGroupFlowTextChoice } from './groupTextReview';
 import { hardQuestionTextField } from './hardQuestionFieldAction';
+import { basisScriptureConflictId, hardQuestionThemeListPath } from './hardQuestionThemeLists';
 import { liveSubmittedWork, sameLiveAtomicProof } from './liveSubmittedWork';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectExactManualChoice, retainedAnchoredPlacementDraft, type ExactManualChoice } from './manualChoice';
@@ -45,7 +46,7 @@ import { readOutlinePointPlacementComparison, retryOutlinePointPlacement } from 
 import { keepUncontestedOutlineTitle } from './outlineTitleEdit';
 import { oversizedNoteOpening } from './oversizedNoteCorrection';
 import { chooseLocalPreachDateEdits, isOrderedPreachDateField, preachDateChoiceFrames, unresolvedPreachDateField } from './preachDateChoice';
-import { confirmedExistingDeletion, equalValues, mergeDocumentFields, mergeFields } from './protocol';
+import { confirmedExistingDeletion, equalValues, mergeDocumentFields, mergeFields, projectHardQuestionThemeOrders } from './protocol';
 import { shouldRetainCheckpoint } from './recovery.client';
 import { recoveryChoiceFingerprint } from './recoveryChoice';
 import { separateRefusedSermonTail } from './refusedSermonSave';
@@ -777,7 +778,8 @@ export class EditorController {
         return;
       }
       const retained = projectOutlineParentChoice(before.confirmed, atChoice, before.remoteCandidate, before.conflicts, 'remote', titles)
-        ?? (!selection && (keepUncontestedOutlineTitle(before.confirmed, atChoice, before.remoteCandidate, before.conflicts)
+        ?? (!selection && (projectHardQuestionThemeOrders(before.confirmed, atChoice, before.remoteCandidate, before.conflicts, 'remote')
+          ?? keepUncontestedOutlineTitle(before.confirmed, atChoice, before.remoteCandidate, before.conflicts)
           ?? keepUncontestedLegacyComment(before.confirmed, atChoice, before.remoteCandidate, before.conflicts)
           ?? keepUncontestedCommentPlace(before.confirmed, atChoice, before.remoteCandidate, before.conflicts)
           ?? keepUncontestedStudyNoteFields(before.confirmed, atChoice, before.remoteCandidate, before.conflicts)));
@@ -880,7 +882,8 @@ export class EditorController {
     const result = this.result;
     if (result?.kind === 'conflict' && checkpoint.pending[result.operationId] && this.manualRequests.has(result.operationId)
       && result.snapshot.metadata?.generation === checkpoint.confirmed.metadata?.generation
-      && result.conflicts.some(({ path }) => hardQuestionTextField(checkpoint.confirmed.resource.collection, path))) return false;
+      && result.conflicts.some(conflict => hardQuestionTextField(checkpoint.confirmed.resource.collection, conflict.path)
+        || (checkpoint.confirmed.resource.collection === 'hardQuestionThemes' && basisScriptureConflictId(conflict)))) return false;
     return Object.values(checkpoint.pending).every(intent => !intent.borrowedManualScope);
   }
 
@@ -1141,7 +1144,8 @@ export class EditorController {
     this.assertCurrent();
     // Forms and action scopes resolve their own refusals. A recovered editor can still own a document deletion.
     if (this.session.checkpoint().pending[request.id] && (editorSlot(request.editorId) === null
-      || (request.retentionScope && readManualScopeIdentity(request.retentionScope) && request.hardQuestionFieldActions))
+      || (request.retentionScope && readManualScopeIdentity(request.retentionScope)
+        && (request.hardQuestionFieldActions || request.baseline.resource.collection === 'hardQuestionThemes')))
       && !isDocumentDeletion(request)) this.manualRequests.add(request.id);
     if (this.completedCommits.includes(request.id)) return;
     if (request.atomic && !['acknowledged', 'cancelled'].includes(request.state)) this.atomicPending.set(request.id, request.atomic);
@@ -1663,6 +1667,7 @@ export class EditorController {
           const retained = retainedMeeting ?? retainedOutline ?? retainedDocumentFields ?? retainedPreachDate ?? (!selection && ((retainedFields?.value.exists ? retainedFields.value.value as DocumentData : undefined)
             ?? (stepText ? keepUncontestedServiceStepText(decided, local, stepText.rowId, stepText.field) : undefined)
             ?? (scriptureRow ? keepUncontestedServiceStepScripture(decided, local, scriptureRow) : undefined)
+            ?? projectHardQuestionThemeOrders(decided.confirmed, local, decided.remoteCandidate, decided.conflicts, 'remote')
             ?? keepUncontestedOutlineTitle(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
             ?? keepUncontestedSermonFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
             ?? keepUncontestedDocumentTagFields(decided.confirmed, local, decided.remoteCandidate, decided.conflicts)
@@ -1698,6 +1703,13 @@ export class EditorController {
         const serviceChoiceIntent = (checkpoint: SessionCheckpoint) => serviceInput
           ? { ...checkpoint, draft: projectServiceOrderInput(checkpoint.confirmed.value, serviceInput) } : checkpoint;
         const replacements: CommitRequest[] = [];
+        if (decided.confirmed.resource.collection === 'hardQuestionThemes'
+          && decided.conflicts.some(({ path }) => hardQuestionThemeListPath(path)) && session.checkpoint().dirty) {
+          const replacement = this.options.commits!.choiceReplacement(record.editorId, session.checkpoint(), {});
+          if (!replacement) throw Object.assign(new Error('The chosen theme order could not be captured'), { code: 'decision-changed' });
+          session.applyCommit(replacement);
+          replacements.push(replacement);
+        }
         if (scratchText?.opening && choice === 'local') {
           const replacement = this.options.commits!.choiceReplacement(record.editorId, session.checkpoint(),
             { scratchTextRecovery: true, action: { kind: 'sermon-note-text', opening: scratchText.opening } });
@@ -1972,12 +1984,13 @@ export class EditorController {
         source = record.checkpoint;
         const records = projectExactManualChoice(record, decision, retired);
         [projected] = records;
-        if (!decision.hardQuestionFieldReview || !projected.checkpoint.dirty) return records;
+        const hardQuestionReview = decision.hardQuestionReview;
+        if (!hardQuestionReview || !projected.checkpoint.dirty) return records;
         const session = DataSession.restore(projected.checkpoint);
         const replacement = this.options.commits!.choiceReplacement(record.editorId, projected.checkpoint, {
-          retentionScope: decision.hardQuestionFieldReview.scopeId,
-          action: { kind: 'document-metadata', time: decision.choiceTime ?? null,
-            hardQuestionFieldReview: decision.hardQuestionFieldReview },
+          retentionScope: hardQuestionReview.scopeId,
+          ...(hardQuestionReview.text && { action: { kind: 'document-metadata' as const, time: decision.choiceTime ?? null,
+            hardQuestionFieldReview: hardQuestionReview.text } }),
         });
         if (!replacement) throw Object.assign(new Error('The shown question choice could not be saved'), { code: 'decision-changed' });
         session.applyCommit(replacement);

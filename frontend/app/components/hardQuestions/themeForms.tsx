@@ -168,12 +168,15 @@ export const basisFormSlot = (basisId: string) => `basis:${basisId}`;
 // drops a label an older basis still holds, and a form may change only the fields it selected.
 export const basisFormFields = (basisId: string) => (['title', 'label', 'text', 'scriptureRefs'] as const).map((field) => ['bases', { id: basisId }, field]);
 
-export function EditBasisDialog({ themeId, basisId, onClose, recoverId }: { themeId: string; basisId: string; onClose: () => void; recoverId?: string | null }) {
+export function EditBasisDialog({ themeId, basisId, onClose, recoverId, reviewRequestId }: {
+  themeId: string; basisId: string; onClose: () => void; recoverId?: string | null; reviewRequestId?: string;
+}) {
   const { t } = useTranslation();
   const resource = useMemo(() => ({ collection: 'hardQuestionThemes', id: themeId }), [themeId]);
   const selection = useMemo(() => basisFormFields(basisId), [basisId]);
-  const engine = useEngineForm(resource, basisFormSlot(basisId), selection, t('hardQuestions.basis.editTitle'), recoverId);
+  const engine = useEngineForm(resource, basisFormSlot(basisId), selection, t('hardQuestions.basis.editTitle'), recoverId, reviewRequestId);
   const { form } = engine;
+  const comparing = form.exactChoice && Boolean(form.comparison?.basisScripture);
   const [saving, setSaving] = useState(false);
   const basis = form.data ? (readTheme(form.data, themeId).bases ?? []).find((item) => item.id === basisId) ?? null : null;
   const value: BasisFields = { title: basis?.title ?? '', text: basis?.text ?? '', scriptureRefs: basis?.scriptureRefs ?? [] };
@@ -195,7 +198,7 @@ export function EditBasisDialog({ themeId, basisId, onClose, recoverId }: { them
   const close = () => { void (form.active ? form.cancel() : Promise.resolve()).then(onClose, () => undefined); };
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (saving || !value.title.trim() || !places.check()) return;
+    if (comparing || saving || !value.title.trim() || !places.check()) return;
     setSaving(true);
     try {
       await form.save((draft) => ({
@@ -222,7 +225,7 @@ export function EditBasisDialog({ themeId, basisId, onClose, recoverId }: { them
   return (
     <FormDialog title={t('hardQuestions.basis.editTitle')} tone="rose" size="form" onClose={close} closeDisabled={saving} unsaved={form.dirty} showCloseButton onSubmit={submit}
       footer={<FormActions tone="rose" onCancel={close} cancelLabel={t('common.cancel')} submitLabel={t('common.save')} saving={saving}
-        submitDisabled={disabled || !value.title.trim()} unsaved={form.dirty} />}>
+        submitDisabled={disabled || comparing || !value.title.trim()} unsaved={form.dirty} />}>
       <EngineFormStatus {...engine} className="mb-4" />
       {form.data && !basis ? (
         <p className="text-sm text-gray-700 dark:text-gray-300">{t('hardQuestions.basis.gone')}</p>

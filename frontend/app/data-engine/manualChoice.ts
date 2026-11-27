@@ -13,6 +13,7 @@ import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './group
 import { captureGroupMeetingReview } from './groupMeetingReview';
 import { captureGroupStepPlacement, carryAnchoredDraftChronology, groupPlacementSteps, mergeEditsAfterAnchoredPlacement, mergeGroupFlowRebase, projectGroupStepOnDocument } from './groupStepPlacement';
 import { hardQuestionFieldTargets, hardQuestionReviewFrames, hardQuestionTextField, type HardQuestionFieldReview } from './hardQuestionFieldAction';
+import { basisScriptureConflictId, keepsBasisScripture } from './hardQuestionThemeLists';
 import { projectHomileticReview, reviewedHomileticList } from './homileticPlanChoice';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection, type ManualPath } from './manualScope';
@@ -87,10 +88,15 @@ export function exactManualRequest(stage: ManualStage | undefined, checkpoint: S
         isReturnedSermonTitle(conflict) || isSermonVerseReview(conflict) || isSermonChurchReview(conflict) || reviewedSermonPreparationField(conflict) !== undefined
         : record.resource.collection === 'series' ? isReturnedSeriesField
           : ({ path }: ConflictDetail) => Boolean(hardQuestionTextField(record.resource.collection, path));
-      const savedFieldReview = returnedField && request.result?.kind === 'conflict'
+      const basisReview = record.resource.collection === 'hardQuestionThemes' && request.result?.kind === 'conflict'
+        && request.result.conflicts.some(conflict => {
+          const id = basisScriptureConflictId(conflict);
+          return id && record.selection.some(path => equalValues(path, ['bases', { id }, 'scriptureRefs']));
+        });
+      const savedFieldReview = basisReview || (returnedField && request.result?.kind === 'conflict'
         && request.result.conflicts.some(conflict => returnedField(conflict)
-          && record.selection.some(path => equalValues(path, conflict.path)));
-      const fieldScope = request.hardQuestionFieldActions || request.sermonVerseAction?.reviewed || request.sermonChurchAction?.reviewed || request.sermonGoalTypeAction?.reviewed
+          && record.selection.some(path => equalValues(path, conflict.path))));
+      const fieldScope = basisReview || request.hardQuestionFieldActions || request.sermonVerseAction?.reviewed || request.sermonChurchAction?.reviewed || request.sermonGoalTypeAction?.reviewed
         || Object.values(request.sermonThesisFieldActions ?? {}).some(action => action?.reviewed)
         ? request.retentionScope ?? request.editorId : request.editorId;
       const savedFieldForm = savedFieldReview && readManualScopeIdentity(fieldScope);
@@ -114,7 +120,8 @@ export interface ExactManualChoice {
   choice: 'local' | 'remote';
   titles?: readonly OutlineTitleDecision[];
   choiceTime?: ActionTime | null;
-  hardQuestionFieldReview?: HardQuestionFieldReview & { scopeId: string };
+  hardQuestionReview?: { scopeId: string; text?: HardQuestionFieldReview;
+    basis?: { id: string; fields: readonly ('text' | 'title')[]; removed?: true } };
   request: CommitRequest;
   stored: ResourceSnapshot;
   value: DocumentData;
@@ -177,6 +184,20 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
       homiletic, request.result.conflicts, decision.choice, prepared ? request.intended : request.value);
     if (!chosen) throw Object.assign(new Error('The Homiletic plan comparison changed'), { code: 'decision-changed' });
     draft = projectManualSelection(stored.value, chosen, decision.selection);
+  } else if (decision.hardQuestionReview?.basis && reviewed && stored.value) {
+    const { id, fields, removed } = decision.hardQuestionReview.basis;
+    if (removed) {
+      if (decision.choice === 'local') throw Object.assign(new Error('The basis was removed'), { code: 'decision-changed' });
+    } else {
+      const rebased = replaySavedChoiceDelta(stored.resource, basis.value, reviewed, stored.value);
+      if (!rebased) throw Object.assign(new Error('The basis changed during review'), { code: 'decision-changed' });
+      const paths: ManualPath[] = ['scriptureRefs', ...fields].map(field => ['bases', { id }, field]);
+      const chosen = projectManualSelection(rebased, decision.choice === 'local' ? reviewed : stored.value, paths);
+      draft = projectManualSelection(stored.value, chosen, decision.selection);
+      if (!keepsBasisScripture(stored.value.bases, draft.bases)) {
+        throw Object.assign(new Error('The basis needs a readable place of Scripture'), { code: 'decision-changed' });
+      }
+    }
   } else if (decision.choice === 'local') {
     if (stored.value && changedThoughtTagTarget(stored.value, request)) {
       throw Object.assign(new Error('The thought that was edited is gone'), { code: 'decision-changed' });
@@ -198,7 +219,7 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
   } else if (request.result?.kind === 'conflict') {
     const conflicts = reviewedConflicts;
     const seriesFields = manualSeriesTextChoiceFields(request.baseline, stored, conflicts, decision.selection, reviewed);
-    const fieldsToDiscard = decision.hardQuestionFieldReview
+    const fieldsToDiscard = decision.hardQuestionReview?.text
       ? [...new Set(conflicts.flatMap(({ path }) => path[0] === undefined ? [] : [path[0]]))] : seriesFields;
     const retained = basis.value && reviewed && stored.value && fieldsToDiscard
       ? keepUncontestedDocumentText(basis.value, reviewed, stored.value, fieldsToDiscard)
