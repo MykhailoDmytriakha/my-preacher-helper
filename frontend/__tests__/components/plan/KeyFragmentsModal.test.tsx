@@ -147,7 +147,9 @@ describe('KeyFragmentsModal', () => {
      const removeButton = screen.getByRole('button', { name: /Trash/i }); // Assuming only one trash icon initially
 
      expect(screen.getByText(fragmentToRemoveText)).toBeInTheDocument();
-     expect(removeButton).toBeInTheDocument();
+     expect(removeButton).toHaveClass('actions');
+     expect(removeButton.closest('li')).toHaveClass('row');
+     expect(removeButton.closest('li')).toContainElement(screen.getByText(fragmentToRemoveText));
 
      await userEvent.click(removeButton);
      await userEvent.click(await screen.findByRole('button', { name: 'common.delete' }));

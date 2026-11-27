@@ -90,8 +90,6 @@
 | место | экран и предмет | что видно |
 |---|---|---|
 | `frontend/app/components/plan-editor/OutlineBoard.tsx:653` | Подпункты в редакторе плана | Перепроверить общий CSS и отдельное поведение при узкой ширине |
-| `frontend/app/components/plan/KeyFragmentsModal.tsx:336` | Ключевые фрагменты, каждый фрагмент | 🗑 |
-| `frontend/app/components/sermon/prep/PreparationPlanList.tsx:44` | Подготовка, каждый пункт гомилетического плана | 🗑 |
 | `frontend/app/components/PointNote.tsx:263` | Заметка под пунктом | × «удалить заметку» (пограничный: одна заметка на пункт) |
 | `frontend/app/(pages)/(private)/groups/[id]/page.tsx:361` | Шапка группы, значок серии | «Изменить» и × (пограничный: один значок) |
 | `frontend/app/components/sermon/scratch/ScratchNoteCard.tsx:228` | — | 🗑; компонент, похоже, нигде не подключён: проверить и удалить как мёртвый код |

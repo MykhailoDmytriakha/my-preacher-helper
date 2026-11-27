@@ -4,6 +4,7 @@ import { X, Plus, Trash2, Lightbulb } from "lucide-react";
 import React, { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 
+import hoverActions from '@/components/ui/HoverActions.module.css';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { SermonPoint, Thought } from "@/models/models";
@@ -330,12 +331,12 @@ const KeyFragmentsModal: React.FC<KeyFragmentsModalProps> = ({
                         {thought.keyFragments.map((fragment, index) => (
                           <li
                             key={index}
-                            className="flex items-center p-2 bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-200 rounded"
+                            className={`flex items-center p-2 bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-200 rounded ${hoverActions.row}`}
                           >
                             <span className="flex-grow">{fragment}</span>
                             <button
                               onClick={() => handleRemoveFragment(thought.id, index)}
-                              className="ml-2 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                              className={`ml-2 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 ${hoverActions.actions}`}
                               title={t("actions.remove")}
                             >
                               <Trash2 className="h-4 w-4" />

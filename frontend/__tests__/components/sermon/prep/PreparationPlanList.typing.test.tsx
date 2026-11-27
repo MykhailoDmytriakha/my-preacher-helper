@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
 import { PreparationPlanList } from '@/components/sermon/prep/PreparationPlanList';
@@ -37,6 +37,23 @@ function append(input: HTMLInputElement, letters: string) {
 }
 
 describe.each<Kind>(['updatedPlan', 'sermonPlan'])('%s delayed title echoes', kind => {
+  it('reveals only the remove control and only for its own entry', async () => {
+    const first = { id: 'one', title: 'A' };
+    const second = { id: 'two', title: 'B' };
+    const plan = delayedPlan(kind, [first, second]);
+    const [row] = screen.getAllByRole('listitem');
+    const key = `wizard.steps.homileticPlan.fields.${kind}`;
+    const remove = within(row).getByRole('button', { name: `${key}.remove` });
+    expect(row).toHaveClass('row');
+    expect(remove).toHaveClass('actions');
+    expect(within(row).getByRole('button', { name: `${key}.moveUp` })).not.toHaveClass('actions');
+    expect(within(row).getByRole('button', { name: `${key}.moveDown` })).not.toHaveClass('actions');
+
+    fireEvent.click(remove);
+    await plan.echo();
+    expect(plan.binding().value).toEqual([second]);
+  });
+
   it('keeps every typed letter before the document has echoed any change', async () => {
     const plan = delayedPlan(kind);
     const input = screen.getByRole('textbox') as HTMLInputElement;
