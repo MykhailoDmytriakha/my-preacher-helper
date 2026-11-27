@@ -11021,3 +11021,9 @@ The current headless Chrome run on `71903b467` entered the real comparison after
 The layout correction from `27caab568` is still effective at `33390045c`. Hidden Chrome on the isolated emulator build verified all three controls and exact title persistence at 320, 390, 660, 900 and 1280 CSS pixels. A long unbroken title scrolls within the input. The buttons stay available, Cancel leaves the saved title unchanged, and the full replacement is present after reload. Sixty-three related tests, TypeScript and the production-mode build passed. Screenshots and browser output are in `artifacts/sermon-title-layout-20261127`. This closes the board entry after a local runtime recheck, with no new application code or historical baseline rerun.
 
 After an authorized release, open a disposable sermon at 320–390 px with a long title, enter edit mode, and confirm there is no sideways scroll. Cancel one change, save a second and reload to verify the exact title. Verify the focused input and both controls at desktop width as well.
+
+## BUG-20261115-sermon-options-mobile-clipping · Recheck the five sermon actions at each width
+
+At `0db0e5a7c`, the entire frontend matches the verified `33390045c` production-mode build. The later header layout from `4299e34ae` still keeps the right-aligned menu inside the viewport. Hidden Chrome at 320, 390, 660, 900 and 1280 px found all five entries and hit their centers in all 25 measurements. At each width Delete opened the confirmation, and Cancel kept the fixture. Sixty-three related Jest tests, TypeScript and the build passed. Visual evidence and geometry are in `artifacts/sermon-options-layout-20261127`. This closes the existing fix after local recheck.
+
+After an authorized release, open a disposable sermon at 320–390 px, tap the three dots next to the export row, and scan all entries through Delete. Open the confirmation and cancel. Repeat on a wide screen to confirm the menu does not grow the page sideways.
