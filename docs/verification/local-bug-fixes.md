@@ -10807,6 +10807,8 @@ The unchanged architecture test reported 22 internal accesses from eight applica
 
 The architecture suite went from one failure to seven passes. The full branch passed 1,297 suites and 17,913 tests, with 31 tests skipped. TypeScript, scoped ESLint and the local production build passed. An independent reviewer checked the five source files. Hidden Chrome at 1280 and 390 px on local Auth and Firestore checked the sermon comparison and separate sketch through reload, selective and zero-write account settings choices, and both readable and unreadable service-order moves. The production-mode local server peaked at 0.31 GiB. Both stands released their ports. Evidence is in `artifacts/engine-import-boundary-20261126/verification.md`.
 
+On c05f9422e all seven architecture tests passed again. The original recovery rule and the five corrected application files are unchanged from the accepted fix. The authorized deployment check below remains in the rollout ledger.
+
 After authorized rollout, verify the deployed revision and open an expendable sermon in Preparation, Manual Plan and Structure. Open its existing recovery offer if one is available. Confirm the settings comparison remains selectable without sending changes before approval. Open an existing service-order recovery notice and confirm the appropriate saved-move option. Keep synthetic damaged checkpoint cases on the emulator.
 
 ## BUG-20261121-word-malformed-html-table-edges · Preserve repaired HTML tables in Word
