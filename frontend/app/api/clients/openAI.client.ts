@@ -1218,7 +1218,12 @@ export async function generateNotePlanPoint(
     promptVersion: 'v5',
     systemPrompt,
     userMessage,
-    context: { outlinePointId: input.point.id, targetNodeId: input.targetNodeId, sourceCount: input.notes.length, style },
+    context: {
+      outlinePointId: input.point.id,
+      ...(input.targetNodeId !== undefined && { targetNodeId: input.targetNodeId }),
+      sourceCount: input.notes.length,
+      style,
+    },
   });
   const result = await callWithStructuredOutput(systemPrompt, userMessage, NotePlanResponseSchema, {
     formatName: 'note_plan_point', userId, promptBlueprint,

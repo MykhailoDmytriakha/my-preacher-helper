@@ -44,6 +44,21 @@ it('assembles each cell in the plan shape — entry, steps on their verses, conc
   expect(callWithStructuredOutput).toHaveBeenCalledWith(expect.stringContaining('Preserve uncertainty'), expect.any(String), expect.anything(), expect.objectContaining({ userId: 'owner' }));
 });
 
+it.each([undefined, 'a'])('omits an unspecified telemetry target and keeps an explicit one (%s)', async targetNodeId => {
+  const ids = targetNodeId === undefined ? ['p', 'a', 'b'] : ['a'];
+  jest.mocked(callWithStructuredOutput).mockResolvedValue({
+    success: true, data: { nodes: ids.map(id => node(id)) },
+  } as never);
+
+  await generateNotePlanPoint({ ...input, targetNodeId }, 'memory', 'owner');
+
+  const context = jest.mocked(callWithStructuredOutput).mock.calls[0][3]?.promptBlueprint?.context;
+  expect(context).toStrictEqual({
+    outlinePointId: 'p', sourceCount: 1, style: 'memory',
+    ...(targetNodeId !== undefined && { targetNodeId }),
+  });
+});
+
 it.each([['p', 'a', 'a'], ['p', 'a', 'foreign'], ['p']])('rejects incomplete, duplicate or foreign node IDs: %j', async (...ids) => {
   jest.mocked(callWithStructuredOutput).mockResolvedValue({ success: true, data: { nodes: ids.map((nodeId) => node(nodeId)) } } as never);
   await expect(generateNotePlanPoint(input, 'memory', 'owner')).rejects.toThrow('requested nodes');

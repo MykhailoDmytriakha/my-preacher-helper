@@ -10962,3 +10962,13 @@ The existing fix `38ce9c1f6` is already in `origin/main`. The new-sermon form as
 The two original regression tests failed when rerun with the parent source. In the production-mode local build of `8245d5e65`, hidden Chrome at 390 and 1280 px and WebKit with touch at 820 px opened the actual New Sermon dialog after focusing its Title field. The list of books appeared with no focused text input. Tapping or clicking Search put focus in the field. Escape and selection both returned focus to the trigger. Choosing John → Chapter 3 → Verse 16 copied the text and retained the title. The current related suite passed 81 tests. Screenshots and reports are in `artifacts/sermon-picker-focus-20261126`.
 
 For physical acceptance on a test iPad, open the New Sermon dialog, tap its Title field and use Choose from the Bible. The initial books should be clear of the keyboard. Tap Search, select a verse and verify its reference and text in the form.
+
+## BUG-20261126-note-plan-telemetry-undefined-target · Record whole-point note plan diagnostics
+
+Generating from a note for the whole point includes no selected sub-point. The server used to include an undefined property in the diagnostic context. Firestore rejected both the opening and the completed record. The generation itself still returned its proposal. The context now includes a target ID only for a deliberately scoped request. The prompt, its version, and the generated proposal keep the same format.
+
+The whole-point telemetry regression failed before the fix, while the explicit-target control passed. The final 90 related tests and production-mode build passed. Scoped lint had zero errors and one existing warning. Hidden Chrome on the emulator showed the same proposed text beside the existing point in both runs. On the previous source one local provider call produced HTTP 200 and no diagnostic record. On the fixed source one local provider call produced HTTP 200 and one finished success record. The stored input contained the exact synthetic study and requested point, and the stored output contained the exact proposal. Reports and screenshots are in `artifacts/note-plan-telemetry-20261126`.
+
+The first QA setup selected the Gemini HTTP address and got HTTP 400 with a synthetic input and test key. Its Firestore was local. Both accepted browser runs used the corrected loopback-only stand. The emulator guide now records the independent model configuration and outbound guard.
+
+After an authorized rollout, use a disposable synthetic study to request one whole-point proposal. Check the completed diagnostic event for `sermon.conspect.note_point` and the outline point it names. Existing selected sub-points continue to carry their explicit ID.

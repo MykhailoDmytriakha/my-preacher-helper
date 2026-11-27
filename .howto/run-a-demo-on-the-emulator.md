@@ -14,6 +14,10 @@ A demo, or a live check that needs particular data, runs against the local Fires
 - A Node worker must await its stand-stop child asynchronously. Blocking that worker with `spawnSync` prevents it from reaping exited service-wrapper children; `kill -0` can then report a zombie even though the recorded child exit was0 and all ports are free. Preserve that failed cleanup command, audit actual PIDs/exports separately, and use async spawn + bounded timer + actual close on the next run. Unit279 HL and HL2 retain this distinction.
 - Worked example with every script (start, seed, walk scenarios, stop): case `2026-10-19-mesto-pisaniya-tekst-i-gde-esche-ispolzuetsya`, folder `demo/`.
 
+## Model calls during autonomous browser checks
+
+Use a local provider stub with synthetic inputs for the AI steps. Setting up the Auth and Firestore emulators leaves the model adapters on their original HTTP endpoints. `OPENAI_BASE_URL` covers the OpenAI client. The Gemini and OpenRouter adapters each set their own URL. In the disposable build, route the provider under test to the loopback stub and reject external `fetch` and HTTP requests in the Next.js process. Check that the stub recorded the model call before counting the browser test. Keep the stub and the guard with the QA evidence, and shut down the stub with the emulator and Next.js.
+
 ## Traps
 
 - Keep pinned emulator configuration separate from mutable runtime output. Before launch, require exactly the copied input files. After launch, verify the same required regular files and hashes, but record additional relative filenames separately: a CLI may create and remove working-directory outputs. Requiring whole-folder equality after the first service starts can prevent the next service or observer from starting. Preserve the actual inventory on failure; if a transient filename was not captured, its identity remains unknown. Unit293 retains such a pre-browser failure separately from application evidence.
