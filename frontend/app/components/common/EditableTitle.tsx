@@ -156,13 +156,13 @@ const EditableTitle: React.FC<EditableTitleProps> = ({
           {error && <p id="title-error" className="col-span-full text-red-500 text-xs">{sayFailure(error, t)}</p>}
         </div>
       ) : (
-        <div className="flex items-center gap-2 group min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
            <h1 className={`${textSizeClass} font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent break-words flex-shrink min-w-0`}>
             {editedTitle} {/* Display editedTitle which reflects initialTitle */}
           </h1>
           <button
             onClick={handleEditClick}
-            className={`${buttonPaddingClass} text-gray-500 dark:text-gray-400 [@media(hover:hover)]:opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full disabled:opacity-50 disabled:hover:bg-transparent`}
+            className={`${buttonPaddingClass} text-gray-500 dark:text-gray-400 transition-colors hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full disabled:opacity-50 disabled:hover:bg-transparent`}
             disabled={editDisabled}
             title={t('common.edit')}
           >

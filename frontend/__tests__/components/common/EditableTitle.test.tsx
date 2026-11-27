@@ -41,10 +41,11 @@ describe('EditableTitle Component', () => {
       await runScenarios(
         [
           {
-            name: 'shows title and edit icon',
+            name: 'shows the page title and its edit control at rest',
             run: () => {
               render(<EditableTitle {...defaultProps} />);
               expect(screen.getByText(defaultProps.initialTitle)).toBeInTheDocument();
+              expect(screen.getByTitle('Edit').className).not.toMatch(/opacity-0|group-hover:/);
             }
           },
           {

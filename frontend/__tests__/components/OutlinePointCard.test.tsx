@@ -271,9 +271,15 @@ it('renames, removes and adds sub-points in the lanes, where the list above them
   const onEditSubPoint = jest.fn();
   const onDeleteSubPoint = jest.fn();
   render(<OutlinePointCard {...base} onAddSubPoint={onAddSubPoint} onEditSubPoint={onEditSubPoint} onDeleteSubPoint={onDeleteSubPoint} />);
-  const lane = within(screen.getByTestId('sub-point-drop-sub'));
+  const section = screen.getByTestId('sub-point-drop-sub');
+  const lane = within(section);
+  const rename = lane.getByRole('button', { name: 'common.edit' });
+  const remove = lane.getByRole('button', { name: 'common.delete' });
+  expect(section).toHaveClass('row');
+  expect(rename.parentElement).toHaveClass('actions');
+  expect(rename.parentElement).toContainElement(remove);
 
-  fireEvent.click(lane.getByRole('button', { name: 'common.edit' }));
+  fireEvent.click(rename);
   fireEvent.change(lane.getByDisplayValue('Sub'), { target: { value: 'renamed sub' } });
   fireEvent.keyDown(lane.getByDisplayValue('Renamed sub'), { key: 'Enter' });
   expect(onEditSubPoint).toHaveBeenCalledWith('point', 'sub', 'Renamed sub', 'Sub');

@@ -9,6 +9,7 @@ import React from 'react';
 import { ScriptureText } from '@/components/bible/ScriptureLinks';
 import { NodeSketches } from '@/components/sermon/scratch/PlacedSketches';
 import { useStructureWriter } from '@/components/sermon/structureWriter';
+import hoverActions from '@/components/ui/HoverActions.module.css';
 import { structureBodyPaddingClass, structureSubPointInsetClass } from '@/utils/structureBoardLayout';
 import { buildSubPointRenderableEntries } from '@/utils/subPoints';
 import { NEUTRAL_CAPTION } from '@/utils/themeColors';
@@ -23,8 +24,6 @@ const LANE_ICON = 'h-3.5 w-3.5';
 const SAVE_KEY = 'common.save';
 const CANCEL_KEY = 'common.cancel';
 const DELETE_KEY = 'common.delete';
-/** With a mouse a lane's rename and delete wait for the pointer; a finger has no hover, so they stay. */
-const LANE_TOOLS_ON_HOVER = 'transition-opacity [@media(hover:hover)_and_(pointer:fine)]:opacity-0 group-hover/lane:opacity-100 group-focus-within/lane:opacity-100';
 
 import type { ThoughtItemRenderer, Translate } from './types';
 import type { Item, SubPoint } from '@/models/models';
@@ -155,7 +154,7 @@ const SubPointDropTarget: React.FC<{
     <div
       ref={setNodeRef}
       data-testid={`sub-point-drop-${subPoint.id}`}
-      className={`group/lane relative ${structureSubPointInsetClass} rounded-2xl border py-3 shadow-sm transition-all duration-200 ${
+      className={`${hoverActions.row} relative ${structureSubPointInsetClass} rounded-2xl border py-3 shadow-sm transition-all duration-200 ${
         isHovered
           ? "border-blue-300 bg-blue-50/50 ring-1 ring-blue-200/50 dark:border-blue-600 dark:bg-blue-900/15 dark:ring-blue-700/30"
           : "border-slate-200/90 bg-slate-50/90 dark:border-slate-700/70 dark:bg-slate-900/30"
@@ -196,7 +195,7 @@ const SubPointDropTarget: React.FC<{
                 <ScriptureText text={subPoint.text} />
               </span>
               {manage && !isReadOnly && (
-                <span className={`flex shrink-0 items-center gap-0.5 ${LANE_TOOLS_ON_HOVER}`}>
+                <span className={`flex shrink-0 items-center gap-0.5 transition-opacity ${hoverActions.actions}`}>
                   <button type="button" onClick={() => manage.startEditing(subPoint)} className={styles.editButtonClass} aria-label={t('common.edit')} title={t('common.edit')}>
                     <PencilIcon className={LANE_ICON} />
                   </button>
