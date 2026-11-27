@@ -3,6 +3,7 @@ import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineH
 import { installWorldFirestore } from '@test-utils/deviceWorld/firestore';
 
 import { ACTION_SLOT } from '../editorIdentity';
+import { readHardQuestionThemeOrderReview } from '../hardQuestionThemeOrderReview';
 import { processCommand, readDocument } from '../server';
 
 import type { DataCommand, DocumentData, ResourceSnapshot } from '../types';
@@ -132,6 +133,22 @@ it('keeps the saved row and holds the local words when an order also has dispute
     await expect(editor.keepLocal()).rejects.toMatchObject({ code: 'other-changes-first' });
     expect((await readDocument(owner, resource)).value?.bases).toEqual(computer);
     expect(editor.getState().checkpoint.draft?.bases).toEqual(expect.arrayContaining([expect.objectContaining({ text: 'Phone words' })]));
+    const compared = editor.getState().checkpoint;
+    const review = readHardQuestionThemeOrderReview(compared)!;
+    const finalWords = { ...computer[1], text: 'Later computer words' };
+    expect(await overwriteBases('computer-edited-again', [basisTwo, finalWords, basisThree], computer)).toMatchObject({ kind: 'acknowledged' });
+    jest.mocked(h.transport.read).mockImplementation(async () => readDocument(owner, resource));
+    const choices = { [review.fields[0].id]: 'local', [review.fields[1].id]: 'remote' } as const;
+    await expect(editor.applyHardQuestionThemeOrderReview!(compared, review.identity, choices))
+      .rejects.toMatchObject({ code: 'decision-changed' });
+    const updated = editor.getState().checkpoint;
+    expect(Object.keys(updated.pending)).toEqual(Object.keys(compared.pending));
+    const revised = readHardQuestionThemeOrderReview(updated)!;
+    expect(revised.fields[1].theirs).toMatchObject({ value: 'Later computer words' });
+    await editor.applyHardQuestionThemeOrderReview!(updated, revised.identity, choices);
+    await browser.engine.retry();
+    await settleEngine();
+    expect((await readDocument(owner, resource)).value?.bases).toEqual([basisThree, finalWords, basisTwo]);
   } finally {
     browser.dispose();
     await settleEngine();
@@ -182,6 +199,117 @@ it('requires a fresh choice when an open comparison learns that the basis is gon
     expect(form.getState()?.comparison).toBeUndefined();
     expect(form.getState()?.record.active).toBe(false);
     expect(form.getState()?.value.bases).toEqual([basisTwo]);
+  } finally {
+    browser.dispose();
+    await settleEngine();
+  }
+});
+
+it('keeps the later local edit queued behind an order comparison when applying the shown versions', async () => {
+  const originals = [...opening.bases, basisThree];
+  const initial = { ...opening, bases: originals, intro: 'Opening words' };
+  installWorldFirestore(() => 1_800_000_000_000);
+  expect(await processCommand(owner, { protocol: 1, owner, resource, operationId: metadata.generation, dependsOn: [],
+    kind: 'create', generation: null, value: initial })).toMatchObject({ kind: 'acknowledged' });
+  const time = { earliestMs: 1_799_999_999_900, latestMs: 1_799_999_999_910 };
+  const h = documentEngineHarness({ ...snapshot, value: initial }, { apply: command => processCommand(owner, command) });
+  let browser = h.createBrowser();
+  browser.engine.setOwner(owner);
+  browser.engine.setOnline(false);
+  try {
+    const originEditorId = browser.editorId(resource, ACTION_SLOT);
+    const action = await browser.engine.openEditor(resource, originEditorId);
+    await action.commit(current => ({ ...current!, bases: [basisThree, { ...initialBasis, text: 'Phone words' }, basisTwo] }));
+    await action.commit(current => ({ ...current!, intro: 'A later edit made without a connection' }),
+      { kind: 'document-metadata', time });
+    await action.close({ flush: false });
+    const computer = [basisTwo, { ...initialBasis, text: 'Computer words' }, basisThree];
+    expect(await overwriteBases('computer-order-and-text', computer, originals)).toMatchObject({ kind: 'acknowledged' });
+    const editor = await browser.engine.openEditor(resource, browser.editorId(resource));
+    browser.engine.setOnline(true);
+    await browser.engine.retry();
+    await settleEngine();
+    const compared = editor.getState().checkpoint;
+    expect(Object.keys(compared.pending)).toHaveLength(2);
+    expect(compared.draft?.intro).toBe('A later edit made without a connection');
+    const review = readHardQuestionThemeOrderReview(compared)!;
+    jest.mocked(h.transport.read).mockImplementation(async () => readDocument(owner, resource));
+    await editor.applyHardQuestionThemeOrderReview!(compared, review.identity, {
+      [review.fields[0].id]: 'local', [review.fields[1].id]: 'remote',
+    });
+    await browser.engine.retry();
+    await settleEngine();
+    expect((await readDocument(owner, resource)).value).toMatchObject({
+      bases: [basisThree, computer[1], basisTwo], intro: 'A later edit made without a connection',
+    });
+    expect(jest.mocked(h.transport.send).mock.calls.at(-1)?.[0]).toMatchObject({
+      hardQuestionFieldActions: { intro: { time, observedRevision: 1 } },
+    });
+    browser.dispose();
+    await settleEngine();
+    browser = h.createBrowser();
+    browser.engine.setOwner(owner);
+    await browser.engine.retry();
+    await settleEngine();
+    const recovery = await browser.engine.listRecoveryChoices(resource);
+    expect(JSON.stringify(recovery)).not.toContain('Phone words');
+    const originating = await browser.engine.openEditor(resource, originEditorId);
+    expect(originating.getState().checkpoint.draft?.bases).toEqual([basisThree, computer[1], basisTwo]);
+  } finally {
+    browser.dispose();
+    await settleEngine();
+  }
+});
+
+it('includes a later captured form save and keeps its newer unsent words separate', async () => {
+  const originals = [...opening.bases, basisThree];
+  const initial = { ...opening, bases: originals };
+  const db = installWorldFirestore(() => 1_800_000_000_000);
+  db.documents.set(`${resource.collection}/${resource.id}`, { ...initial, _dataEngine: metadata });
+  const h = documentEngineHarness({ ...snapshot, value: initial }, { apply: command => processCommand(owner, command) });
+  const browser = h.createBrowser();
+  browser.engine.setOwner(owner);
+  browser.engine.setOnline(false);
+  try {
+    const editor = await browser.engine.openEditor(resource, browser.editorId(resource));
+    await editor.commit(current => ({ ...current!, bases: [basisThree, { ...initialBasis, text: 'Phone words' }, basisTwo] }));
+    const form = editor.form('basis:b1', [['bases', { id: 'b1' }, 'text']]);
+    const words = (text: string) => (doc: DocumentData) => ({ ...doc,
+      bases: (doc.bases as DocumentData[]).map(row => row.id === 'b1' ? { ...row, text } : row),
+    });
+    await form.begin();
+    await form.update(words('Saved basis words'));
+    await form.save();
+    await form.begin();
+    await form.update(words('Unsent words still in the form'));
+    const computer = [basisTwo, { ...initialBasis, text: 'Computer words' }, basisThree];
+    expect(await overwriteBases('computer-order-and-text', computer, originals)).toMatchObject({ kind: 'acknowledged' });
+    browser.engine.setOnline(true);
+    await browser.engine.retry();
+    await settleEngine();
+    const compared = editor.getState().checkpoint;
+    expect(Object.keys(compared.pending)).toHaveLength(2);
+    expect(compared.draft?.bases).toEqual([basisThree, { ...initialBasis, text: 'Saved basis words' }, basisTwo]);
+    const review = readHardQuestionThemeOrderReview(compared)!;
+    jest.mocked(h.transport.read).mockImplementation(async () => readDocument(owner, resource));
+    await editor.applyHardQuestionThemeOrderReview!(compared, review.identity, {
+      [review.fields[0].id]: 'local', [review.fields[1].id]: 'local',
+    });
+    await browser.engine.retry();
+    await settleEngine();
+    expect((await readDocument(owner, resource)).value).toMatchObject({
+      bases: [basisThree, { ...initialBasis, text: 'Saved basis words' }, basisTwo],
+    });
+    expect(form.getState()).toMatchObject({ dirty: true, value: {
+      bases: expect.arrayContaining([expect.objectContaining({ id: 'b1', text: 'Unsent words still in the form' })]),
+    } });
+    expect(form.getState()?.choiceRequired).toBeUndefined();
+    await form.save();
+    await browser.engine.retry();
+    await settleEngine();
+    expect((await readDocument(owner, resource)).value?.bases).toEqual([
+      basisThree, { ...initialBasis, text: 'Unsent words still in the form' }, basisTwo,
+    ]);
   } finally {
     browser.dispose();
     await settleEngine();

@@ -33,8 +33,9 @@ import { isOrderedGroupFlowText } from './groupFlowTitleAction';
 import { captureGroupMeetingReview } from './groupMeetingReview';
 import { retryGroupStepPlacement } from './groupStepPlacement';
 import { groupTextDecision, isGroupStatusComparison, projectGroupTextDecisions, readGroupFlowTextChoice, readGroupTextReview, sameGroupText, writeGroupFlowTextChoice } from './groupTextReview';
-import { hardQuestionTextField } from './hardQuestionFieldAction';
+import { hardQuestionTextField, type HardQuestionFieldObservations } from './hardQuestionFieldAction';
 import { basisScriptureConflictId, hardQuestionThemeListPath } from './hardQuestionThemeLists';
+import { resolveHardQuestionThemeOrderReview, type HardQuestionThemeOrderChoices } from './hardQuestionThemeOrderReview';
 import { liveSubmittedWork, sameLiveAtomicProof } from './liveSubmittedWork';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectExactManualChoice, retainedAnchoredPlacementDraft, type ExactManualChoice } from './manualChoice';
@@ -522,6 +523,62 @@ export class EditorController {
       const record = { ...this.record(), checkpoint: chosen.checkpoint() };
       await this.options.store.put(record);
       await this.applyChoiceProjection(source, record, captures);
+    });
+  }
+
+  applyHardQuestionThemeOrderReview(compared: SessionCheckpoint, identity: string, choices: HardQuestionThemeOrderChoices): Promise<void> {
+    const captures = this.pendingCaptures.boundary();
+    const expected = this.captureRecoveryChoice();
+    return this.enqueueChoice(async () => {
+      const commits = this.options.commits;
+      const initial = this.session.checkpoint();
+      const pendingIds = Object.keys(initial.pending);
+      if (!commits || this.prepared || !pendingIds.length || !compared.remoteCandidate || !equalValues(initial, compared)) {
+        throw Object.assign(new Error('The compared theme save changed'), { code: 'decision-changed' });
+      }
+      this.assertChoiceAuthority(initial);
+      const pending = (await commits.list()).filter(entry => Object.hasOwn(initial.pending, entry.id));
+      this.assertRecoveryChoice(expected);
+      const answered = pending.filter(entry => entry.state === 'conflict' && entry.result?.kind === 'conflict');
+      const [request] = answered;
+      if (pending.length !== pendingIds.length || answered.length !== 1 || pending.some(entry =>
+        !equalValues(entry.baseline.resource, initial.confirmed.resource) || (entry !== request &&
+          (entry.state !== 'queued' || entry.command)))) {
+        throw Object.assign(new Error('Resolve the compared theme save separately'), { code: 'other-changes-first' });
+      }
+      // The comparison displayed the editor's aggregate draft. Unsent dependent actions in that
+      // draft are included in the replacement, and the atomic cancellation rechecks that exact set.
+      const revisions = new Map(pending.map(entry => [entry.id, entry.revision]));
+      const original = [...pending].sort((first, second) => initial.pending[first.id].generation - initial.pending[second.id].generation)
+        .reduce<HardQuestionFieldObservations>((fields, entry) => ({ ...fields, ...entry.hardQuestionFieldActions }), {});
+      await this.options.publishStoredChoice?.(compared.remoteCandidate);
+      let source: SessionCheckpoint | undefined;
+      let projected: EditorRecord | undefined;
+      await commits.cancelWithCheckpoint('', [request.id], retired => {
+        this.assertRecoveryChoice(expected);
+        const record = this.record();
+        source = record.checkpoint;
+        if (retired.length !== revisions.size || retired.some(entry => entry.revision - 1 !== revisions.get(entry.id))
+          || !equalValues(source, compared) || [...this.pendingCaptures.boundary()].some(attempt => !captures.has(attempt))) {
+          throw Object.assign(new Error('The compared theme save changed'), { code: 'decision-changed' });
+        }
+        const chosen = resolveHardQuestionThemeOrderReview(source, identity, choices);
+        const session = DataSession.restore({ ...source, pending: {} });
+        session.acceptRemote();
+        session.edit(chosen);
+        const next = session.checkpoint();
+        const replacement = next.dirty ? commits.choiceReplacement(record.editorId, next, Object.keys(original).length ? {
+          action: { kind: 'document-metadata', time: null, hardQuestionFieldReview: { fields: [], original } },
+        } : {}) : null;
+        if (next.dirty && !replacement) throw Object.assign(new Error('The chosen theme could not be captured'), { code: 'decision-changed' });
+        if (replacement) session.applyCommit(replacement);
+        projected = { ...record, checkpoint: session.checkpoint(), completedCommits: [...new Set([...(record.completedCommits ?? []), ...pendingIds])] };
+        return { editorRecords: [projected], manualRecoveries: [], replacements: replacement ? [replacement] : [] };
+      }, { roots: [request], included: new Set(pendingIds.filter(id => id !== request.id)),
+        placementChoice: new Map([[request.id, compared.remoteCandidate]]) });
+      if (!source || !projected) throw new Error('The chosen theme checkpoint was not captured');
+      await this.applyChoiceProjection(source, projected, captures);
+      await commits.finishCancellation('', pendingIds);
     });
   }
 

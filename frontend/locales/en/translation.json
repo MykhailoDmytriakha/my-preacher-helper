@@ -5884,6 +5884,12 @@
       "leavesBases": "The bases the answer rests on belong to its old theme — after the move the links to them are dropped; the words of the answer stay."
     },
     "theme": {
+      "basisOrder": "Order of bases",
+      "groupOrder": "Order of groups",
+      "rowContents": "Row contents",
+      "rowRemoved": "This row was removed.",
+      "shortLabel": "Short label",
+      "extraField": "Additional field",
       "edit": "Edit theme",
       "actions": "Theme actions",
       "editTitle": "Theme",

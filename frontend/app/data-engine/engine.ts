@@ -30,6 +30,7 @@ import { collectionHeadRef } from './feed';
 import { firstGroupMeetingReview } from './groupFirstMeeting';
 import { GROUP_MEETING_SAVE_DELAY, GROUP_MEETING_SLOT, readyMeetingAutosave } from './groupMeetingAutosave';
 import { readGroupFlowTextChoice } from './groupTextReview';
+import { readHardQuestionThemeOrderReview, type HardQuestionThemeOrderChoices } from './hardQuestionThemeOrderReview';
 import { HOMILETIC_POSITION_PROJECTION, HOMILETIC_POSITION_REVIEW } from './homileticPlan';
 import { reviewedHomileticList } from './homileticPlanChoice';
 import { submittedEditorCheckpoint } from './liveSubmittedWork';
@@ -207,6 +208,7 @@ export interface ManagedEditor {
   /** Persist and queue deletion; refuses unresolved pending operations before changing the draft. */
   remove(): Promise<void>;
   applyAccountPreferenceReview(compared: SessionCheckpoint, choices: AccountPreferenceResolution, time: ActionTime | null): Promise<void>;
+  applyHardQuestionThemeOrderReview?(compared: SessionCheckpoint, identity: string, choices: HardQuestionThemeOrderChoices): Promise<void>;
   acceptRemote(expected?: EditorRecord, compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]): Promise<void>;
   keepLocal(expected?: EditorRecord, compared?: SessionCheckpoint, choiceTime?: ActionTime | null, titles?: readonly OutlineTitleDecision[]): Promise<void>;
   dispose(): void;
@@ -3154,6 +3156,31 @@ export class DataEngine {
         await this.resolveEditorChoice(entry, owner, generation, choice, compared ? controller.captureRecoveryChoice() : expected, choiceTime, titles);
         active();
       };
+      const applyHardQuestionThemeOrderReview = async (compared: SessionCheckpoint, identity: string, choices: HardQuestionThemeOrderChoices) => {
+        active();
+        const comparison = readHardQuestionThemeOrderReview(compared);
+        const stored = compared.remoteCandidate;
+        if (loadingBranchAnswer || !stored || comparison?.identity !== identity || !equalValues(controller.getState().checkpoint, compared)) {
+          throw Object.assign(new Error('The shown theme comparison changed'), { code: 'decision-changed' });
+        }
+        const live = await this.readWriteTarget(frozen).catch(() => null);
+        active();
+        if (!live || !canReplaceSnapshot(stored, live)) {
+          throw Object.assign(new Error('Read the current theme before choosing'), { code: 'fresh-read-required' });
+        }
+        if (!equalValues(live, stored)) {
+          await controller.observe(live, 'server');
+          throw Object.assign(new Error('The shown theme comparison changed'), { code: 'decision-changed' });
+        }
+        const forms = this.manualFormsAffectedByChoice(entry, compared.pending);
+        await controller.applyHardQuestionThemeOrderReview(compared, identity, choices);
+        active();
+        try {
+          await this.continueManualFormsAfterChoice(entry, owner, generation, forms);
+        } finally {
+          this.prepareCommitsInBackground(); this.backgroundDrain();
+        }
+      };
       const applyAccountPreferenceReview = async (compared: SessionCheckpoint, choices: AccountPreferenceResolution, time: ActionTime | null) => {
         active();
         const review = readAccountPreferenceReview(compared);
@@ -3414,6 +3441,7 @@ export class DataEngine {
         },
         remove: () => remove(),
         applyAccountPreferenceReview,
+        applyHardQuestionThemeOrderReview,
         acceptRemote: (expected, compared, titles) => choose('remote', expected, compared, undefined, titles),
         keepLocal: (expected, compared, choiceTime, titles) => choose('local', expected, compared, choiceTime, titles),
         dispose: () => {
@@ -3627,6 +3655,31 @@ export class DataEngine {
     await controller.observe(snapshot, 'server'); this.assertCurrent(owner, generation);
   }
 
+  private manualFormsAffectedByChoice(parent: EditorEntry, pending: SessionCheckpoint['pending']) {
+    return [...this.manualForms.values()].filter(item => {
+      if (item.parent !== parent || !item.scope) return false;
+      const state = item.scope.getState();
+      return (state.record.active || state.dirty) && Boolean(state.record.predecessor && pending[state.record.predecessor.id]);
+    }).map(item => ({ item, scope: item.scope! }));
+  }
+
+  private async continueManualFormsAfterChoice(parent: EditorEntry, owner: string, generation: number,
+    affected: readonly { item: ManualFormEntry; scope: ManualScope }[]): Promise<void> {
+    this.assertCurrent(owner, generation);
+    if (parent.closed) return;
+    const requests = await this.commits.list(); this.assertCurrent(owner, generation);
+    requests.forEach(request => this.rememberCommit(request));
+    for (const { item, scope } of affected) {
+      if (item.scope !== scope || ![...this.manualForms.values()].includes(item)) continue;
+      await scope.settled().catch(() => undefined); this.assertCurrent(owner, generation);
+      const predecessor = scope.getState().record.predecessor;
+      if (predecessor && requests.some(request => request.id === predecessor.id && request.state === 'cancelled')) {
+        await scope.continueAfterChoice(this.captureManual(parent, owner, item.selection), predecessor.id);
+        item.emit();
+      }
+    }
+  }
+
   private async resolveEditorChoice(parent: EditorEntry, owner: string, generation: number, choice: 'local' | 'remote', expected?: EditorRecord, choiceTime?: ActionTime | null, titles?: readonly OutlineTitleDecision[]): Promise<void> {
     const controller = parent.controller!;
     const checkpoint = controller.getState().checkpoint;
@@ -3636,11 +3689,7 @@ export class DataEngine {
     const groupText = readGroupFlowTextChoice(checkpoint) || readCouncilSummaryChoice(checkpoint);
     const finalPrivateFieldChoice = readPrivateDocumentReview(checkpoint)?.remaining.length === 1;
     const meeting = checkpoint.confirmed.resource.collection === 'groups' && firstGroupMeetingReview(checkpoint.conflicts);
-    const affected = [...this.manualForms.values()].filter(item => {
-      if (item.parent !== parent || !item.scope) return false;
-      const state = item.scope.getState();
-      return (state.record.active || state.dirty) && Boolean(state.record.predecessor && pending[state.record.predecessor.id]);
-    }).map(item => ({ item, scope: item.scope! }));
+    const affected = this.manualFormsAffectedByChoice(parent, pending);
     let failure: unknown;
     try {
       if (expected && hasSermonOutlineReview(checkpoint)) {
@@ -3672,24 +3721,8 @@ export class DataEngine {
       }
       this.prepareCommitsInBackground(); this.backgroundDrain();
     } catch (error) { failure = error; }
-    const repairFields = async () => {
-      this.assertCurrent(owner, generation);
-      if (!parent.closed) {
-        const requests = await this.commits.list(); this.assertCurrent(owner, generation);
-        requests.forEach(request => this.rememberCommit(request));
-        for (const { item, scope } of affected) {
-          if (item.scope !== scope || ![...this.manualForms.values()].includes(item)) continue;
-          await scope.settled().catch(() => undefined); this.assertCurrent(owner, generation);
-          const predecessor = scope.getState().record.predecessor;
-          if (predecessor && requests.some(request => request.id === predecessor.id && request.state === 'cancelled')) {
-            await scope.continueAfterChoice(this.captureManual(parent, owner, item.selection), predecessor.id);
-            item.emit();
-          }
-        }
-      }
-    };
     try {
-      await repairFields();
+      await this.continueManualFormsAfterChoice(parent, owner, generation, affected);
     } catch (error) {
       if (failure) { if (this.current(owner, generation)) this.reportFailure(error, about); }
       else throw error;

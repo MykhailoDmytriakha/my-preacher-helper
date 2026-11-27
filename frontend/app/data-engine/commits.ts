@@ -1233,7 +1233,8 @@ export class CommitQueue {
   /** An editor choice owns both the cancellation and its exact durable checkpoint. */
   async cancelWithCheckpoint(editorId: string, additionalRequestIds: readonly string[],
     project: (saved: CommitRequest[]) => ChoiceCheckpoint,
-    review?: { roots: readonly CommitRequest[]; retained?: ReadonlySet<string>; placementChoice?: ReadonlyMap<string, ResourceSnapshot>; groupTextReview?: true }
+    review?: { roots: readonly CommitRequest[]; retained?: ReadonlySet<string>; included?: ReadonlySet<string>;
+      placementChoice?: ReadonlyMap<string, ResourceSnapshot>; groupTextReview?: true }
       | { assertScope: (requests: readonly CommitRequest[]) => void }): Promise<void> {
     if (!this.options.store.compareAndSetWithCheckpoint) throw new Error('Atomic choice checkpoint storage is required');
     const { owner, generation, records, chosen } = await this.planCancellation(editorId, additionalRequestIds, false);
@@ -1259,13 +1260,21 @@ export class CommitQueue {
       throw Object.assign(new Error('Resolve the failed Save from its form to preserve later work'), { code: 'pending-delivery-first' });
     }
     const choiceRequestIds = review || selectedManual.length ? [...chosen] : undefined;
+    // A reviewed aggregate can explicitly include the unsent descendants whose words were shown.
+    const decided = new Set(chosen);
+    for (const id of reviewed?.included ?? []) {
+      if (!records.some(record => record.id === id && record.state === 'queued' && !record.command)) {
+        throw Object.assign(new Error('The shown dependent save changed'), { code: 'decision-changed' });
+      }
+      decided.add(id);
+    }
     const placementByRequest = new Map<string, ResourceSnapshot>();
     for (const root of reviewed?.roots ?? []) {
       const stored = reviewed?.placementChoice?.get(root.id);
       if (stored) for (const request of cancellationScope(records, '', [root.id])) placementByRequest.set(request.id, stored);
     }
     const saved = await this.options.store.compareAndSetWithCheckpoint(records.map(previous => ({ previous,
-      next: { ...this.cancelledRequest(previous, chosen), ...(reviewed && !chosen.has(previous.id) && (reviewed.retained?.has(previous.id) ?? true)
+      next: { ...this.cancelledRequest(previous, decided), ...(reviewed && !decided.has(previous.id) && (reviewed.retained?.has(previous.id) ?? true)
         ? { retainedAfterChoice: true as const } : {}),
       ...(placementByRequest.has(previous.id) && { placementChoiceStored: placementByRequest.get(previous.id) }) },
     })), requests => {

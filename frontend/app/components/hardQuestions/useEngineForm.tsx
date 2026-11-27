@@ -5,11 +5,13 @@ import { useEffect, useLayoutEffect, useRef } from 'react';
 import { toast } from 'sonner';
 
 import { DataSyncStatus, type TextComparison } from '@/data-engine/DataSyncStatus';
-import { hasHardQuestionTextConflict, readHardQuestionBasisConflict, useDataDocument, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { hasHardQuestionTextConflict, readHardQuestionBasisConflict, readHardQuestionThemeOrderReview, useDataDocument, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useTranslation } from '@locales/useTranslation';
 
 import { QUIET_BUTTON } from './parts';
+
+import type { DocumentData } from '@/data-engine/types';
 
 type Resource = { collection: string; id: string };
 type Selection = Parameters<typeof useDataForm>[2];
@@ -124,21 +126,78 @@ function hardQuestionComparison(comparison: ReturnType<typeof useDataForm>['comp
   };
 }
 
+type ThemeReviewItem = NonNullable<ReturnType<typeof readHardQuestionThemeOrderReview>>['fields'][number];
+
+const comparisonRow = (entry: unknown): entry is DocumentData =>
+  entry !== null && typeof entry === 'object' && !Array.isArray(entry);
+
+function themeOrderLabels(field: ThemeReviewItem) {
+  const rows = [field.mine.value, field.theirs.value].flatMap(value => Array.isArray(value) ? value.filter(comparisonRow) : []);
+  const title = (item: Record<string, unknown>) => String(item.title ?? item.id);
+  const detail = (item: Record<string, unknown>) => [
+    Array.isArray(item.scriptureRefs) ? item.scriptureRefs.join(', ') : '',
+    typeof item.text === 'string' ? item.text.slice(0, 80) : '',
+  ].filter(Boolean).join(' · ');
+  return (item: Record<string, unknown>) => {
+    const sameTitle = rows.filter(row => row.id !== item.id && title(row) === title(item));
+    if (!sameTitle.length) return title(item);
+    const note = detail(item);
+    return [title(item), note, !note || sameTitle.some(row => detail(row) === note) ? String(item.id) : ''].filter(Boolean).join(' · ');
+  };
+}
+
+function themeReviewWords(field: ThemeReviewItem['mine'], t: ReturnType<typeof useTranslation>['t'],
+  orderLabel?: ReturnType<typeof themeOrderLabels>, rowRemoved = false): string {
+  if (!field.exists) return t(rowRemoved ? 'hardQuestions.theme.rowRemoved' : 'dataSync.emptyField');
+  const value = field.value;
+  if (Array.isArray(value)) {
+    return value.map((item, index) => orderLabel && comparisonRow(item)
+      ? `${index + 1}. ${orderLabel(item)}` : String(item)).join('\n') || t('dataSync.emptyField');
+  }
+  if (comparisonRow(value)) {
+    return [value.title, value.text, ...(Array.isArray(value.scriptureRefs) ? value.scriptureRefs : [])]
+      .filter((line): line is string => typeof line === 'string' && Boolean(line)).join('\n') || JSON.stringify(value);
+  }
+  return typeof value === 'string' ? value || t('dataSync.emptyField') : String(value);
+}
+
+function themeReviewField(field: ThemeReviewItem, t: ReturnType<typeof useTranslation>['t']) {
+  const [list, row, property] = field.path;
+  const label = !row ? t(list === 'bases' ? 'hardQuestions.theme.basisOrder' : 'hardQuestions.theme.groupOrder')
+    : [field.rowTitle, t(!property ? 'hardQuestions.theme.rowContents'
+      : property === 'scriptureRefs' ? 'hardQuestions.basis.places'
+      : property === 'text' ? 'hardQuestions.basis.fieldText'
+      : property === 'title' ? list === 'bases' ? 'hardQuestions.basis.fieldTitle' : 'hardQuestions.dialogs.groupTitle'
+      : property === 'label' ? 'hardQuestions.theme.shortLabel' : 'hardQuestions.theme.extraField')].filter(Boolean).join(' · ');
+  const orderLabel = row ? undefined : themeOrderLabels(field);
+  const rowRemoved = Boolean(row && !property);
+  return { id: field.id, label, mine: themeReviewWords(field.mine, t, orderLabel, rowRemoved),
+    stored: themeReviewWords(field.theirs, t, orderLabel, rowRemoved) };
+}
+
 /** Open the form that owns a text comparison so its exact captured fields are used for the choice. */
 export function EngineReadingStatus({ document, onReview, onReviewBasis, reviewing = false }: {
   document: ReturnType<typeof useDataDocument>; onReview: () => void; onReviewBasis?: (basisId: string, requestId?: string) => void; reviewing?: boolean;
 }) {
   const { t } = useTranslation();
   const checkpoint = !document.readOnly && document.status?.phase === 'conflict' ? document.state?.checkpoint : undefined;
-  const basis = checkpoint && readHardQuestionBasisConflict(checkpoint, document.state?.result);
+  const listReview = checkpoint && readHardQuestionThemeOrderReview(checkpoint);
+  const applyThemeOrder = document.applyHardQuestionThemeOrderReview;
+  const fieldReview = checkpoint && listReview && applyThemeOrder && {
+    identity: listReview.identity,
+    fields: listReview.fields.map(field => themeReviewField(field, t)),
+    apply: (choices: Record<string, 'local' | 'remote'>) => applyThemeOrder(checkpoint, listReview.identity, choices),
+  };
+  const basis = !fieldReview && checkpoint && readHardQuestionBasisConflict(checkpoint, document.state?.result);
   const review = basis && onReviewBasis ? () => onReviewBasis(basis.id, basis.requestId)
-    : checkpoint && hasHardQuestionTextConflict(checkpoint) ? onReview : undefined;
+    : !fieldReview && checkpoint && hasHardQuestionTextConflict(checkpoint) ? onReview : undefined;
   if (review && reviewing) return null;
   return (
     <>
       <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} className="mt-3"
-        onRetry={review ? undefined : document.retry} onKeepLocal={review ? undefined : () => document.keepLocal()}
-        onAcceptRemote={review ? undefined : () => document.acceptRemote()} />
+        fieldReview={fieldReview} onRetry={review || fieldReview ? undefined : document.retry}
+        onKeepLocal={review || fieldReview ? undefined : () => document.keepLocal()}
+        onAcceptRemote={review || fieldReview ? undefined : () => document.acceptRemote()} />
       {review && <button type="button" onClick={review} className={QUIET_BUTTON}>{t('dataSync.versionComparison')}</button>}
     </>
   );

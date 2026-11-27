@@ -41,11 +41,15 @@ jest.mock('@/components/bible/VerseWindow', () => {
 });
 jest.mock('@/components/bible/useBookTexts', () => ({ useBookTexts: () => new Map() }));
 jest.mock('@/components/MarkdownDisplay', () => ({ __esModule: true, default: ({ content }: { content: string }) => <div data-testid="markdown">{content}</div> }));
-jest.mock('@/data-engine/DataSyncStatus', () => ({
-  DataSyncStatus: ({ comparison }: { comparison?: { mine: string; stored: string } }) => comparison
-    ? <div role="region" aria-label="dataSync.versionComparison"><p>{comparison.mine}</p><p>{comparison.stored}</p></div>
-    : null,
-}));
+jest.mock('@/data-engine/DataSyncStatus', () => {
+  const actual = jest.requireActual<typeof import('@/data-engine/DataSyncStatus')>('@/data-engine/DataSyncStatus');
+  return {
+    DataSyncStatus: (props: Parameters<typeof actual.DataSyncStatus>[0]) => props.fieldReview
+      ? <actual.DataSyncStatus {...props} />
+      : props.comparison ? <div role="region" aria-label="dataSync.versionComparison"><p>{props.comparison.mine}</p><p>{props.comparison.stored}</p></div>
+        : null,
+  };
+});
 jest.mock('@/data-engine/DataCollectionStatus', () => ({ DataCollectionStatus: () => null }));
 
 // The search lives in the address (its own tests); here it filters, and its clearing is watched.
@@ -66,6 +70,8 @@ let mockDocument: Doc = null;
 let mockPresence: { kind: string } = { kind: 'present' };
 let mockConflictPaths: readonly (readonly string[])[] = [];
 let mockBasisConflictId: string | undefined;
+let mockThemeOrderReview: ReturnType<typeof import('@/data-engine/react.client').readHardQuestionThemeOrderReview>;
+const mockApplyThemeOrderReview = jest.fn().mockResolvedValue(undefined);
 let mockAnsweredOperation: string | undefined;
 type BasisFormCopy = { scopeId: string; record: { predecessor: { id: string }; savedGeneration: number | null } };
 let mockFormCopies: BasisFormCopy[] = [];
@@ -81,14 +87,16 @@ const mockFormSave = jest.fn((_updater?: (draft: Record<string, unknown>) => Rec
 const mockFormUpdate = jest.fn((_updater: (draft: Record<string, unknown>) => Record<string, unknown>) => Promise.resolve());
 const mockRecover = jest.fn((_id: string) => Promise.resolve());
 jest.mock('@/data-engine/react.client', () => ({
+  readHardQuestionThemeOrderReview: () => mockThemeOrderReview,
   readHardQuestionBasisConflict: () => mockBasisConflictId ? { id: mockBasisConflictId, requestId: mockAnsweredOperation } : undefined,
   hasHardQuestionTextConflict: () => mockConflictPaths.some(path => ['title', 'short', 'detail', 'differ', 'intro'].includes(path[0])),
   DataDocumentProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useDataDocument: () => ({
-    data: mockDocument, presence: mockPresence, status: mockConflictPaths.length ? { phase: 'conflict' } : null,
+    data: mockDocument, presence: mockPresence, status: mockConflictPaths.length ? { phase: 'conflict', canKeepLocal: true, canAcceptRemote: true } : null,
     state: { checkpoint: { conflicts: mockConflictPaths.map(path => ({ path })) },
       result: mockAnsweredOperation ? { kind: 'conflict', operationId: mockAnsweredOperation } : undefined }, error: null, readOnly: false, loading: false,
     recoveryIdentity: {}, retry: jest.fn(), keepLocal: jest.fn(), acceptRemote: jest.fn(),
+    applyHardQuestionThemeOrderReview: mockApplyThemeOrderReview,
   }),
   useDataForm: () => ({
     data: mockDocument, loading: false, active: true, readOnly: false, dirty: mockFormDirty, busy: false, status: null, comparison: mockComparison, error: null,
@@ -142,6 +150,7 @@ beforeEach(() => {
   mockDraftChoices = [];
   mockConflictPaths = [];
   mockBasisConflictId = undefined;
+  mockThemeOrderReview = undefined;
   mockAnsweredOperation = undefined;
   mockFormCopies = [];
   mockPendingFormCopies = undefined;
@@ -353,6 +362,33 @@ describe('a theme', () => {
     page.rerender(<HardQuestionThemePage />);
     await act(async () => answer([{ scopeId: 'old form', record: { predecessor: { id: 'refused-places' }, savedGeneration: 4 } }]));
     expect(mockRecover).not.toHaveBeenCalled();
+  });
+
+  it('applies a separate decision for the order and the disputed words', async () => {
+    mockConflictPaths = [['bases'], ['bases', 'id:b1', 'text']];
+    const version = (value: string | { id: string; title: string; scriptureRefs: string[] }[]) => ({ exists: true, value });
+    const first = { id: 'b1', title: 'Основание', scriptureRefs: ['Ин 3:16'] };
+    const second = { id: 'b2', title: 'Основание', scriptureRefs: ['Ин 3:17'] };
+    mockThemeOrderReview = { identity: 'combined review', fields: [
+      { id: 'order', path: ['bases'], base: version([]), mine: version([first, second]), theirs: version([second, first]) },
+      { id: 'text', path: ['bases', 'id:b1', 'text'], rowTitle: 'Основание', base: version('Было'),
+        mine: version('Мой текст'), theirs: version('Сохранённый текст') },
+    ] };
+    render(<HardQuestionThemePage />);
+    const review = screen.getByRole('region', { name: 'dataSync.versionComparison' });
+    const apply = within(review).getByRole('button', { name: 'dataSync.applyReviewedVersions' });
+    const order = within(review).getByRole('group', { name: 'hardQuestions.theme.basisOrder' });
+    const text = within(review).getByRole('group', { name: 'Основание · hardQuestions.basis.fieldText' });
+    expect(within(order).getByText(/1\. Основание · Ин 3:16/)).toBeInTheDocument();
+    expect(within(order).getByText(/1\. Основание · Ин 3:17/)).toBeInTheDocument();
+    expect(apply).toBeDisabled();
+    fireEvent.click(within(order).getByRole('radio', { name: /dataSync.yourVersion/ }));
+    expect(apply).toBeDisabled();
+    fireEvent.click(within(text).getByRole('radio', { name: /dataSync.storedVersion/ }));
+    fireEvent.click(apply);
+    await waitFor(() => expect(mockApplyThemeOrderReview).toHaveBeenCalledWith(
+      expect.objectContaining({ conflicts: expect.any(Array) }), 'combined review', { order: 'local', text: 'remote' },
+    ));
   });
 
   it('a basis card\'s places open in the verse window, while the card itself still opens the basis', () => {

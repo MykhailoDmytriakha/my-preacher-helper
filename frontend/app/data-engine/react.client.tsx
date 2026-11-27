@@ -46,6 +46,7 @@ import { captureGroupStepPlacement as captureGroupPlacement, projectCapturedGrou
 import { readGroupTextReview } from './groupTextReview';
 import { hardQuestionTextField } from './hardQuestionFieldAction';
 import { basisScriptureConflictId } from './hardQuestionThemeLists';
+import { readHardQuestionThemeOrderReview as readThemeOrderReview, type HardQuestionThemeOrderChoices } from './hardQuestionThemeOrderReview';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
 import { ARCHIVED_COLLECTIONS, isEngineOwnedLegacyMutation, isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
 import { discoverLegacyRecovery as discoverLegacyOriginals, exportLegacyRecovery as exportLegacyOriginal, type LegacyRecoverySource } from './legacyRecovery.client';
@@ -204,6 +205,9 @@ export function readDocumentTagComparison(checkpoint: SessionCheckpoint) { retur
 export function readDocumentTextComparison(checkpoint: SessionCheckpoint) { return readDocumentTextChoice(checkpoint); }
 export const isChurchValue: typeof churchValue = churchValue;
 export function churchFieldWords(value: unknown): string | undefined { return churchWords(value); }
+export function readHardQuestionThemeOrderReview(checkpoint: SessionCheckpoint) {
+  return readThemeOrderReview(checkpoint);
+}
 export function readHardQuestionBasisConflict(checkpoint: SessionCheckpoint, result?: CommandResult | null) {
   if (checkpoint.confirmed.resource.collection !== 'hardQuestionThemes') return;
   const id = checkpoint.conflicts.map(basisScriptureConflictId).find(basisId => basisId !== undefined);
@@ -1745,6 +1749,12 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     discardAction: (id: string) => run(editor => editor.discardAction(id)),
     save,
     remove: () => { cancelScheduledSave(); return run(editor => editor.remove()); },
+    ...(collection === 'hardQuestionThemes' && {
+      applyHardQuestionThemeOrderReview: (compared: SessionCheckpoint, identity: string, choices: HardQuestionThemeOrderChoices) => run(editor => {
+        if (!editor.applyHardQuestionThemeOrderReview) throw new Error('Theme comparison is unavailable');
+        return editor.applyHardQuestionThemeOrderReview(compared, identity, choices);
+      }),
+    }),
     applyAccountPreferenceReview: (compared: SessionCheckpoint, choices: AccountPreferenceResolution) => {
       cancelScheduledSave();
       const time = owner ? actionClock.capture(owner) ?? null : null;
