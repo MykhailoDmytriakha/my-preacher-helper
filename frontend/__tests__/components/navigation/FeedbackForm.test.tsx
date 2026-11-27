@@ -254,8 +254,11 @@ describe('FeedbackForm Component', () => {
     // Thumbnail grid should be visible
     expect(screen.getByTestId('image-previews')).toBeInTheDocument();
 
-    // Remove the image
     const removeBtn = screen.getByTestId('remove-image-0');
+    const thumbnail = screen.getByTestId('image-previews').firstElementChild;
+    expect(thumbnail).toHaveClass('row');
+    expect(thumbnail).toContainElement(removeBtn);
+    expect(removeBtn).toHaveClass('actions');
     fireEvent.click(removeBtn);
 
     expect(screen.queryByTestId('image-previews')).not.toBeInTheDocument();

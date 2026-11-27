@@ -100,7 +100,6 @@
 **B — спрятаны и на касании (обратный дефект):**
 - `frontend/app/components/SortableItem.tsx:179`, структура → ✎ и 🗑 у каждой мысли. Прячет по ширине (`sm:opacity-0 sm:pointer-events-none`), а не по наличию мыши, поэтому на iPad они спрятаны и не нажимаются.
 - `frontend/app/components/Column.tsx:564`, структура, боковая панель → кнопки пункта. Стоит `opacity-0 group-hover:opacity-100` без условия на мышь.
-- `frontend/app/components/navigation/FeedbackForm.tsx:330` → × у прикреплённой картинки. Та же запись без условия.
 - Пограничные, решить с владельцем:
   - `frontend/app/components/settings/TagList.tsx:61` — карандаш на цвете метки (сам цвет нажимается);
   - `frontend/app/components/common/EditableVerse.tsx:204` — одно поле, а не список;

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import "@locales/i18n";
+import hoverActions from '@/components/ui/HoverActions.module.css';
 import Select from '@/components/ui/Select';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
 import { buildDiagnosticReport } from '@/utils/appDiagnostics';
@@ -314,7 +315,7 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
         {images.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-2" data-testid="image-previews">
             {images.map((src, index) => (
-              <div key={index} className="relative group w-16 h-16 rounded-md overflow-hidden border border-gray-300 dark:border-gray-600 flex-shrink-0">
+              <div key={index} className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-md border border-gray-300 dark:border-gray-600 ${hoverActions.row}`}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={src}
@@ -327,9 +328,9 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
                   aria-label={t('feedback.removeImage')}
                   disabled={isSubmitting}
                   data-testid={`remove-image-${index}`}
-                  className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 opacity-0 group-hover:opacity-100 transition-opacity rounded-md focus:opacity-100"
+                  className={`absolute right-0.5 top-0.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/75 text-white transition-opacity hover:bg-black focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white ${hoverActions.actions}`}
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
