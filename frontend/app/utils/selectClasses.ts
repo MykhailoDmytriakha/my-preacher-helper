@@ -1,4 +1,8 @@
-export type SelectSize = 'sm' | 'md';
+/**
+ * `sm` a dense filter row, `md` a field, `lg` a field in a window beside its text fields (`FORM_INPUT_CLASS`): their
+ * height, corners, padding and type, so a list in «Новый вопрос» does not differ from the field above it (2026-11-27).
+ */
+export type SelectSize = 'sm' | 'md' | 'lg';
 
 /**
  * Where the dropdown sits. `field` is a form field on the page background; `muted` is a
@@ -27,21 +31,23 @@ export type SelectAccent = 'emerald' | 'blue' | 'rose' | 'amber' | 'neutral';
  * below is the seat reserved for it.
  */
 export const SELECT_SHAPE_CLASSES =
-  'w-full min-w-0 appearance-none truncate rounded-lg border shadow-sm transition focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60';
+  'w-full min-w-0 appearance-none truncate border shadow-sm transition focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:opacity-60';
 
 /**
  * The right padding is the arrow's seat. `sm` seats a 16px chevron inset 10px, `md` a 20px
- * one inset 12px — change one and change the matching inset in `SELECT_CHEVRON_CLASSES`,
+ * one inset 12px, `lg` a 20px one inset 14px — change one and change the matching inset in `SELECT_CHEVRON_CLASSES`,
  * or the longest option will run under the arrow.
  */
 export const SELECT_SIZE_CLASSES: Record<SelectSize, string> = {
-  sm: 'h-9 pl-3 pr-9 text-sm',
-  md: 'h-11 pl-3.5 pr-11 text-sm',
+  sm: 'h-9 rounded-lg pl-3 pr-9 text-sm',
+  md: 'h-11 rounded-lg pl-3.5 pr-11 text-sm',
+  lg: 'h-[2.875rem] rounded-xl pl-4 pr-11 text-sm',
 };
 
 export const SELECT_CHEVRON_CLASSES: Record<SelectSize, string> = {
   sm: 'right-2.5 h-4 w-4',
   md: 'right-3 h-5 w-5',
+  lg: 'right-3.5 h-5 w-5',
 };
 
 export const SELECT_TONE_CLASSES: Record<SelectTone, string> = {

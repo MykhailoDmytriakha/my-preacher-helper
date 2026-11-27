@@ -798,13 +798,85 @@ export interface ServiceOrder {
    * document: an index would rewrite every row it shifted past, and half of those writes can
    * be lost on a phone with no signal. Ties (two devices moving into the same gap while
    * offline) are broken by document id, and a gap that collapses is repaired by renumbering
-   * the whole list — see `serviceOrderRank.ts`.
+   * the whole list — see `listRank.ts`.
    */
   rank: number;
   createdAt: string;
   updatedAt: string;
   /** Revision per editable aggregate; absent reads as 0. */
   rev?: Record<string, number>;
+}
+
+/**
+ * HARD QUESTIONS — the questions people ask the pastor, and the answers he once thought through
+ * to the end (`/care/questions`, case 2026-11-25-slozhnye-voprosy-koncepciya).
+ *
+ * A theme is a TEACHING, not a folder: at its top stand its bases — the few positions with their
+ * places of Scripture on which every short answer of the theme rests (clothing: modesty, the heart
+ * over the dress, not causing a brother to stumble…). A basis is written once; forty answers point
+ * to it. A small theme may have no bases at all and then behaves as a plain shelf of questions.
+ *
+ * Questions are their own documents (one per question), so editing one never touches another and
+ * the theme document stays small. A question points to its theme, group and bases by id; a reader
+ * tolerates a pointer to something deleted — the question shows "without a theme" or "without a
+ * group", and an unknown basis is skipped — so removing a theme, a group or a basis is one write and
+ * never hides a question.
+ *
+ * Nothing here is about people: who asked is not kept (the owner, 2026-11-25).
+ */
+export interface HardQuestionGroup {
+  id: string;
+  title: string;
+}
+
+export interface HardQuestionBasis {
+  id: string;
+  /** "Скромность и благопристойность". */
+  title: string;
+  /** What the basis says, in Markdown. */
+  text?: string;
+  /** "1 Тим 2:9–10" — as typed, read by `referenceFromTyped`. */
+  scriptureRefs?: string[];
+}
+
+export interface HardQuestionTheme {
+  id: string;
+  userId: string;
+  title: string;
+  /** Opening words of the theme, in Markdown. */
+  intro?: string;
+  /** Place among the themes: a midpoint between neighbours (`utils/listRank.ts`). */
+  rank: number;
+  groups?: HardQuestionGroup[];
+  bases?: HardQuestionBasis[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HardQuestion {
+  id: string;
+  userId: string;
+  /** The question as it is usually asked. */
+  title: string;
+  /** Absent, or naming a theme that is gone: the question stands "without a theme". */
+  themeId?: string;
+  /** Absent, or naming a group that is gone: the question stands "without a group" in its theme. */
+  groupId?: string;
+  /** Place inside its group: a midpoint between neighbours (`utils/listRank.ts`). */
+  rank: number;
+  /** Other words in which the same question is asked; search finds the question by any of them. */
+  alternates?: string[];
+  /** What to say in a minute, in Markdown. No short answer and no detail: the question waits for an answer. */
+  short?: string;
+  /** The answer thought through, in Markdown. */
+  detail?: string;
+  /** Where churches decide differently, in Markdown. */
+  differ?: string;
+  scriptureRefs?: string[];
+  /** The bases of its theme this answer rests on. */
+  basisIds?: string[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 /**

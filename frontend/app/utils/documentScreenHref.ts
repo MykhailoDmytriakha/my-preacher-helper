@@ -26,6 +26,10 @@ export function documentScreenHref(resource: ResourceRef, value?: DocumentData |
     case 'planTemplates': return `/settings/templates?template=${id}`;
     case 'occasionPlaces':
       return value && typeof value.occasionId === 'string' && value.occasionId ? `/care/word/${encodeURIComponent(value.occasionId)}` : '/care/word';
+    case 'hardQuestionThemes': return `/care/questions/${id}`;
+    // A question lives under its theme (`none` without one); a theme that is gone sends the page on to `none` itself.
+    case 'hardQuestions':
+      return `/care/questions/${value && typeof value.themeId === 'string' && value.themeId ? encodeURIComponent(value.themeId) : 'none'}/${id}`;
     case 'bibleMarks':
       if (!value || typeof value.userId !== 'string' || !isBibleId(value.bible)
         || typeof value.book !== 'string' || !getBookById(value.book)
@@ -44,6 +48,14 @@ export function isOnDocumentScreen(pathname: string | null | undefined, resource
     const target = new URLSearchParams(documentScreenHref(resource, value)!.split('?')[1]);
     return pathname === href && query.get('book') === target.get('book')
       && (!query.has('read') || query.get('read') === target.get('read'));
+  }
+  // A question's screen is known by the question's own id, whatever theme segment the address carries
+  // (the copy in hand may name a theme the page has already moved it out of).
+  if (resource.collection === 'hardQuestions') {
+    const segments = pathname.split('/').filter(Boolean);
+    let id = segments[3] ?? '';
+    try { id = decodeURIComponent(id); } catch { /* a broken escape names no question */ }
+    return segments.length === 4 && segments[0] === 'care' && segments[1] === 'questions' && id === resource.id;
   }
   return pathname === href || pathname.startsWith(`${href}/`);
 }

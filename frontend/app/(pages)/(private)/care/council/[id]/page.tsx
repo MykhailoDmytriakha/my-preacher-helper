@@ -32,7 +32,6 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
-import { ReorderArrows } from '@/(pages)/(private)/care/orders/ReorderArrows';
 import { ScriptureText, ScriptureWrittenIn } from '@/components/bible/ScriptureLinks';
 import { ScriptureLinksInWindow } from '@/components/bible/VerseWindow';
 import { RecordReadSummary } from '@/components/common/recordReadSummary';
@@ -47,6 +46,7 @@ import ConfirmModal from '@/components/ui/ConfirmModal';
 import DatePickerField from '@/components/ui/DatePickerField';
 import { DocumentMetadataHistory } from '@/components/ui/DocumentMetadataHistory';
 import { LiveTextArea, LiveTextInput } from '@/components/ui/LiveTextInput';
+import { ReorderArrows } from '@/components/ui/ReorderArrows';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { DataMembershipStatus } from '@/data-engine/DataMembershipStatus';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';

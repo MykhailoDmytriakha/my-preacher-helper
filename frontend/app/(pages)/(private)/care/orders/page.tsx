@@ -47,6 +47,7 @@ import { ServiceOrderDraftLinks } from '@/components/care/ServiceOrderDraftLinks
 import { ServiceOrderPlacementHistory } from '@/components/care/ServiceOrderPlacementHistory';
 import { ListReadFeedback } from '@/components/ListReadFeedback';
 import { Chip } from '@/components/ui/Chip';
+import { ReorderArrows } from '@/components/ui/ReorderArrows';
 import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { useServiceOrders } from '@/hooks/useServiceOrders';
 import { sayFailure, type FailureWords } from '@/utils/actionFailureMessage';
@@ -54,7 +55,7 @@ import { listReadState } from '@/utils/listReadState';
 import { EMERALD_ACTION, NEUTRAL_CAPTION, CARE_CARD_TONES } from '@/utils/themeColors';
 import { useTranslation } from '@locales/useTranslation';
 
-import { ReorderArrows, ServiceOrderFailure } from './ReorderArrows';
+import { ServiceOrderFailure } from './ReorderArrows';
 
 import type { ServiceOrder, ServiceOrderCatalogKey } from '@/models/models';
 import type { ButtonHTMLAttributes, ComponentType, SVGProps } from 'react';

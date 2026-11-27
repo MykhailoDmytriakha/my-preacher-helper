@@ -1,13 +1,15 @@
 'use client';
 
-import { ArrowLeft, ChevronRight, Plus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 
+import { PlaceCard, placeWords as wordsOf } from '@/components/bible/PlaceCard';
 import { useBookTexts } from '@/components/bible/useBookTexts';
 import { useVerseWindow } from '@/components/bible/VerseWindow';
+import hoverActions from '@/components/ui/HoverActions.module.css';
 import { DataCollectionStatus } from '@/data-engine/DataCollectionStatus';
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useConfirm } from '@/hooks/useConfirm';
@@ -15,7 +17,7 @@ import { ownPlaceKey, useOccasionPlaces, type OwnPlace, type OwnPlaceRef } from 
 import { useRouteId } from '@/hooks/useRouteId';
 import { namesAPlace } from '@/utils/bibleLink';
 import { canGoBackToPage } from '@/utils/modalHistory.client';
-import { placeShown, versesPreview, type PlaceVerse } from '@/utils/placeText';
+import { placeShown } from '@/utils/placeText';
 import { awaitWriteOperation } from '@/utils/recoverableWrite';
 import { referenceBibleFor } from '@/utils/scriptureReferenceNumbering';
 import { parseReferenceText } from '@/utils/scriptureReferenceParser';
@@ -26,13 +28,8 @@ import { useTranslation } from '@locales/useTranslation';
 import type { AppLocale } from '@/utils/appLocale';
 import type { BibleId } from '@/utils/bibles';
 import type { ScriptureRefShape } from '@/utils/scriptureReference';
-import type { ReactNode } from 'react';
 
 import '@locales/i18n';
-
-/** A run of verses shows whole, up to the cross-reference window's eight; a whole chapter, its opening two. */
-const RUN_VERSES_SHOWN = 8;
-const CHAPTER_VERSES_SHOWN = 2;
 
 type Place = ScriptureRefShape & { bible: BibleId; chapter: number };
 
@@ -133,7 +130,7 @@ export default function WordForOccasionSituationPage() {
                   const shown = shownOf(place.ref);
                   const label = shown.name;
                   return (
-                    <li key={place.ids[0]}>
+                    <li key={place.ids[0]} className={hoverActions.row}>
                       <PlaceCard
                         label={label}
                         note={null}
@@ -142,16 +139,19 @@ export default function WordForOccasionSituationPage() {
                         openLabel={t('careWord.openPlace', { place: label })}
                         onOpen={() => verseWindow.open(place.ref)}
                         action={(
-                          // Shown on hover and on keyboard focus; a phone has no hover, so there it always stands.
+                          // Shown on hover and on keyboard focus, and not pressable while hidden; a touch screen has no
+                          // hover, so there it always stands (`HoverActions.module.css`).
+                          <span className={`relative z-10 ${hoverActions.actions}`}>
                           <button
                             type="button"
                             onClick={() => { void removeOwn(place, label); }}
                             aria-label={t('careWord.own.remove', { place: label })}
                             title={t('careWord.own.remove', { place: label })}
-                            className="relative z-10 -my-2.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-gray-400 opacity-0 transition hover:bg-red-50 hover:text-red-600 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 group-hover:opacity-100 dark:text-gray-500 dark:hover:bg-red-950/40 dark:hover:text-red-400 [@media(hover:none)]:opacity-100"
+                            className="-my-2.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-gray-400 transition hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40 dark:text-gray-500 dark:hover:bg-red-950/40 dark:hover:text-red-400"
                           >
                             <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
                           </button>
+                          </span>
                         )}
                       />
                     </li>
@@ -175,42 +175,6 @@ export default function WordForOccasionSituationPage() {
       )}
       {verseWindow.sheet}
       {confirmDialog}
-    </div>
-  );
-}
-
-function wordsOf(verses: readonly PlaceVerse[], place: Place): string | null {
-  return versesPreview(verses, place.fromVerse === undefined ? CHAPTER_VERSES_SHOWN : RUN_VERSES_SHOWN);
-}
-
-/**
- * One place as a card: its label, a quiet note, its words; a press anywhere on the card opens it.
- * The opening button stretches over the whole card (its `after:` layer), so a card can also carry
- * its own action (`action`, the remove of an own place) beside the arrow, never inside a button.
- */
-function PlaceCard({ label, note, words, loadingWords, openLabel, onOpen, action }: {
-  label: string; note: ReactNode; words: string | null; loadingWords: string; openLabel: string; onOpen: () => void; action?: ReactNode;
-}) {
-  return (
-    <div className="group relative flex w-full items-start gap-3 rounded-2xl border border-gray-200 bg-white p-4 transition hover:border-emerald-300 hover:bg-emerald-50/40 has-[:focus-visible]:border-emerald-400 dark:border-gray-800 dark:bg-gray-900 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/20">
-      <span className="min-w-0 flex-1">
-        <span className="flex flex-wrap items-baseline gap-x-2.5">
-          <button
-            type="button"
-            onClick={onOpen}
-            aria-label={openLabel}
-            className="text-left text-sm font-bold text-emerald-700 after:absolute after:inset-0 after:rounded-2xl after:content-[''] focus-visible:outline-none dark:text-emerald-300"
-          >
-            {label}
-          </button>
-          {note && <span className="text-xs text-gray-500 dark:text-gray-400">{note}</span>}
-        </span>
-        <span className="mt-1.5 block font-serif text-[17px] leading-relaxed text-gray-800 dark:text-gray-200">
-          {words ?? <span className="font-sans text-sm text-gray-500 dark:text-gray-400">{loadingWords}</span>}
-        </span>
-      </span>
-      {action}
-      <ChevronRight className="mt-0.5 h-[18px] w-[18px] shrink-0 text-gray-400 dark:text-gray-500" strokeWidth={2} aria-hidden="true" />
     </div>
   );
 }

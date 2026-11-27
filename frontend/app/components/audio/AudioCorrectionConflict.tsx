@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 
+import Select from '@/components/ui/Select';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { SpeechCorrectionConflict } from '@/hooks/usePreparedSpeech';
@@ -29,11 +30,11 @@ export default function AudioCorrectionConflict({ conflict, busy, saveDisabled, 
           {conflict.targetIndex === null && (
             <label className="block space-y-1">
               <span>{t('audioExport.correctionChooseTarget', { defaultValue: 'Choose the fragment to change' })}</span>
-              <select className="w-full min-w-0 rounded border border-gray-300 bg-white p-2 text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+              <Select accent="amber" wrapperClassName="w-full min-w-0"
                 value={target ?? ''} disabled={busy} onChange={event => setTarget(event.target.value === '' ? null : Number(event.target.value))}>
                 <option value="">{t('audioExport.correctionTargetPlaceholder', { defaultValue: 'The fragments were prepared again. Select the intended fragment.' })}</option>
                 {chunks.map((chunk, index) => <option key={index} value={index}>{index + 1}. {chunk.text.slice(0, 100)}</option>)}
-              </select>
+              </Select>
             </label>
           )}
           {selected && <div>

@@ -7,8 +7,8 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { ScriptureText } from '@/components/bible/ScriptureLinks';
 import { SubPointList } from '@/components/column/SubPointList';
 import { OutlineTitleDraftNotices, outlineTitleDraftResource, OutlineTitleDraftScope, useNewOutlineTitleDraft, useOutlineTitleDraft } from '@/components/plan-editor/OutlineTitleDrafts';
-import planActions from '@/components/plan-editor/PlanRowActions.module.css';
 import { useStructureWriter } from '@/components/sermon/structureWriter';
+import planActions from '@/components/ui/HoverActions.module.css';
 import { useConfirm } from '@/hooks/useConfirm';
 import { usePangeaAnnouncements } from '@/hooks/useDragAnnouncements';
 import { useAuth } from '@/providers/AuthProvider';

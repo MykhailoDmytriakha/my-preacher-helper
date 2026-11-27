@@ -1,11 +1,11 @@
 export const ACTION_CLOCK_HEADER = 'x-engine-action-clock';
 
 export function usesActionClock(collection: string): boolean {
-  return collection === 'sermons' || collection === 'series' || collection === 'councils' || collection === 'prayerRequests' || collection === 'groups' || collection === 'bibleMarks' || collection === 'serviceOrders' || collection === 'studyNotes' || collection === 'planTemplates' || collection === 'tags' || collection === 'occasionPlaces';
+  return collection === 'sermons' || collection === 'series' || collection === 'councils' || collection === 'prayerRequests' || collection === 'groups' || collection === 'bibleMarks' || collection === 'serviceOrders' || collection === 'studyNotes' || collection === 'planTemplates' || collection === 'tags' || collection === 'occasionPlaces' || collection === 'hardQuestionThemes' || collection === 'hardQuestions';
 }
 
 export function readsDocumentActionClock(collection: string): boolean {
-  return collection === 'users' || collection === 'sermons' || collection === 'groups' || collection === 'series' || collection === 'councils' || collection === 'prayerRequests' || collection === 'studyNotes' || collection === 'planTemplates' || collection === 'tags' || collection === 'occasionPlaces';
+  return collection === 'users' || collection === 'sermons' || collection === 'groups' || collection === 'series' || collection === 'councils' || collection === 'prayerRequests' || collection === 'studyNotes' || collection === 'planTemplates' || collection === 'tags' || collection === 'occasionPlaces' || collection === 'hardQuestionThemes' || collection === 'hardQuestions';
 }
 
 export type ActionTime = { earliestMs: number; latestMs: number };

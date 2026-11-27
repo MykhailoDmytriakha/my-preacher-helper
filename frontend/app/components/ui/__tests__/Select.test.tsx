@@ -1,7 +1,9 @@
+import { createRef } from 'react';
+
 import { fireEvent, render, screen } from '@testing-library/react';
 
 import Select from '@/components/ui/Select';
-import { SELECT_CHEVRON_CLASSES, SELECT_SIZE_CLASSES } from '@/utils/selectClasses';
+import { SELECT_CHEVRON_CLASSES, SELECT_SIZE_CLASSES, SELECT_TONE_CLASSES } from '@/utils/selectClasses';
 
 describe('Select', () => {
   it('renders a native select that keeps its value, change handler and accessible name', () => {
@@ -33,7 +35,7 @@ describe('Select', () => {
   });
 
   it('reserves the arrow seat on the right for each size', () => {
-    (['sm', 'md'] as const).forEach((size) => {
+    (['sm', 'md', 'lg'] as const).forEach((size) => {
       const { container, unmount } = render(
         <Select size={size} aria-label={`size ${size}`}>
           <option value="a">A</option>
@@ -54,6 +56,21 @@ describe('Select', () => {
     );
     expect(container.firstElementChild?.className).toContain('sm:w-52');
     expect(screen.getByRole('combobox').className).not.toContain('sm:w-52');
+  });
+
+  it('sits among a window\'s text fields in their corners and type, and takes focus back through its ref (2026-11-27)', () => {
+    const ref = createRef<HTMLSelectElement>();
+    render(
+      <Select ref={ref} size="lg" aria-label="Theme">
+        <option value="a">A</option>
+      </Select>,
+    );
+    const select = screen.getByRole('combobox', { name: 'Theme' });
+    expect(select.className).toContain('rounded-xl');
+    expect(select.className).toContain('text-sm');
+    expect(select.className).toContain(SELECT_TONE_CLASSES.field);
+    expect(select.className).not.toContain('rounded-lg');
+    expect(ref.current).toBe(select);
   });
 
   it('passes disabled through to the control', () => {

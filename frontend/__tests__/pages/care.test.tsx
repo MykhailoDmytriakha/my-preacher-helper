@@ -28,6 +28,12 @@ jest.mock('@/hooks/usePrayerRequests', () => ({
 
 // The plane counts councils in preparation the same way; the hook needs a QueryClient the
 // page test does not build, and the number is the section's own concern.
+// The hard questions: only what the plane reads from the hook — whether the lists are whole, and what waits.
+let mockHardQuestionsComplete = true;
+let mockWaiting = 0;
+jest.mock('@/hooks/useHardQuestions', () => ({
+  useHardQuestions: () => ({ complete: mockHardQuestionsComplete, library: { waiting: Array.from({ length: mockWaiting }, (_, index) => ({ id: `w${index}` })) } }),
+}));
 jest.mock('@/hooks/useCouncilsRead', () => ({ useCouncilsRead: () => ({ councils: mockCouncils, loading: false, error: mockCouncilReadError, refresh: jest.fn() }) }));
 
 /** Every section on the plane, grouped into the card it belongs to. */
@@ -41,7 +47,7 @@ const CARDS = Object.keys(SECTIONS_BY_CARD) as (keyof typeof SECTIONS_BY_CARD)[]
 const SECTIONS = CARDS.flatMap((card) => SECTIONS_BY_CARD[card]);
 
 /** The sections that are built. Everything else must be inert and marked "soon". */
-const BUILT: Record<string, string> = { prayers: '/prayers', rites: '/care/orders', council: '/care/council', word: '/care/word' };
+const BUILT: Record<string, string> = { prayers: '/prayers', rites: '/care/orders', council: '/care/council', word: '/care/word', questions: '/care/questions' };
 
 describe('Pastor plane', () => {
   beforeEach(() => {
@@ -49,6 +55,8 @@ describe('Pastor plane', () => {
     mockPrayerReadError = null;
     mockCouncilReadError = null;
     mockCouncils.length = 0;
+    mockHardQuestionsComplete = true;
+    mockWaiting = 0;
   });
 
   it('names the plane', () => {
@@ -144,6 +152,25 @@ describe('Pastor plane', () => {
 
     const row = screen.getByTestId('care-section-prayers');
     expect(within(row).queryByText('0')).not.toBeInTheDocument();
+  });
+
+  it('counts the hard questions waiting for an answer, only from whole lists, and nothing when none wait', () => {
+    mockWaiting = 3;
+    const { unmount } = render(<CarePage />);
+    const row = screen.getByTestId('care-section-questions');
+    expect(within(row).getByText('3')).toBeInTheDocument();
+    expect(within(row).getByText('hardQuestions.cardCount')).toBeInTheDocument();
+    unmount();
+
+    mockHardQuestionsComplete = false;
+    const second = render(<CarePage />);
+    expect(within(screen.getByTestId('care-section-questions')).queryByText('3')).not.toBeInTheDocument();
+    second.unmount();
+
+    mockHardQuestionsComplete = true;
+    mockWaiting = 0;
+    render(<CarePage />);
+    expect(within(screen.getByTestId('care-section-questions')).queryByText('0')).not.toBeInTheDocument();
   });
 
   it('has every string it asks for in all three locales', () => {

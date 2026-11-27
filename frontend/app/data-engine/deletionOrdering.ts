@@ -14,7 +14,7 @@ const sameResource = (a: ResourceRef, b: ResourceRef) => a.collection === b.coll
 
 // These screens expose a first local creation and allow the user to delete it.
 const standaloneCreationCollections = new Set([
-  'occasionPlaces', 'prayerRequests', 'tags', 'planTemplates', 'groups', 'councils', 'series', 'sermons', 'studyNotes',
+  'occasionPlaces', 'hardQuestionThemes', 'hardQuestions', 'prayerRequests', 'tags', 'planTemplates', 'groups', 'councils', 'series', 'sermons', 'studyNotes',
 ]);
 
 export function isDocumentDeletion(request: CommitRequest): boolean {

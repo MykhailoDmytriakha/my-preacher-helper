@@ -77,6 +77,9 @@ const fields: Record<string, readonly string[]> = {
   tags: ['name', 'color', 'required'],
   // A place the pastor added to a topic of the word for the occasion (`/care/word`): one document per place, made and removed, never edited.
   occasionPlaces: ['occasionId', 'ref'],
+  // Hard questions (`/care/questions`): a theme with its groups and bases, and one document per question.
+  hardQuestionThemes: ['title', 'intro', 'rank', 'groups', 'bases'],
+  hardQuestions: ['title', 'themeId', 'groupId', 'rank', 'alternates', 'short', 'detail', 'differ', 'scriptureRefs', 'basisIds'],
   // 'enablePrepMode' and 'enableStructurePreview' — retired beta switches (2026-10-31): nothing writes them now, but a command
   // an older version queued on a device is still delivered, or the settings commands queued after it would stay stuck behind it.
   users: ['lastSeenAt', 'language', 'email', 'displayName', 'firstDayOfWeek', 'enablePrepMode', 'enableAudioGeneration',
