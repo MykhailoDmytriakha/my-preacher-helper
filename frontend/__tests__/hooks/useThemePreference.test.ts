@@ -112,6 +112,19 @@ describe('useThemePreference Hook', () => {
     expect(result.current.preference).toBe('dark');
   });
 
+  it('keeps both mounted controls on the same preference as either one changes it', () => {
+    const portrait = renderHook(() => useThemePreference());
+    const landscape = renderHook(() => useThemePreference());
+
+    act(() => portrait.result.current.setPreference('dark'));
+    expect(landscape.result.current.preference).toBe('dark');
+
+    act(() => landscape.result.current.setPreference('system'));
+    expect(portrait.result.current.preference).toBe('system');
+    expect(document.documentElement).toHaveAttribute('data-theme-preference', 'system');
+    expect(document.documentElement).not.toHaveClass('dark');
+  });
+
   it('shows the explicit choice when the menu remounts without writing an older storage value', () => {
     const first = renderHook(() => useThemePreference());
     act(() => first.result.current.setPreference('dark'));

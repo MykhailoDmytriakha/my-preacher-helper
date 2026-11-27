@@ -10850,3 +10850,11 @@ The two-profile checks at 1280 and 390 px covered showing the offer without writ
 After an authorized deployment, repeat with a dedicated test account, independently signed-in browser profiles and test sermons. Confirm the proposal stays separate until acceptance, later words remain preserved, and usage increases once per generation.
 
 The editor can persist a local Save before the server receives it. A saved choice is retired only once the exact accepted cells appear in the confirmed document. The local acceptance record survives reopening while delivery is waiting and is removed after the durable retirement request takes over.
+
+## BUG-20261118-share-theme-switches-disagree · Verify one theme across the shared note layouts
+
+A shared note mounts both theme controls, with CSS choosing which can be seen. The existing device-wide preference from `7255f5be7` also drives the account dropdown and the mobile menu. The new simultaneous-controls regression failed with the earlier hook from `3a4fecd13` substituted in an isolated copy. The landscape control still showed System after the portrait control chose Dark. The regression and 56 related tests pass with the shared preference.
+
+In Chrome and WebKit the same shared note opened at 820 × 1180 and 1180 × 820. Both controls reported Dark after choosing it in portrait, then both reported System after choosing it in landscape. System followed the emulated light OS theme, and the explicit Light choice survived reloading the note. In the signed-in Studies screen the wide profile menu and the narrow main menu kept the same choices in both directions. The layout and selected controls were reviewed in browser captures. Evidence is in the local case `artifacts/shared-note-theme-rotation-20261126`. The tests used local Auth and Firestore and released the owned ports.
+
+For deployed acceptance use a dedicated test note, open its shared page on an iPad, select Dark in portrait, rotate and select System in landscape, then rotate back. Check the selected control and the page theme together. This local run used simulated viewport dimensions.
