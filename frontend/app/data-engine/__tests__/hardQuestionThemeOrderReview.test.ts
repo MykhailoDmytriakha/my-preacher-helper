@@ -36,6 +36,46 @@ it('lets the person keep their words and independently use the saved placement',
   }).value).toEqual({ ...initial, bases: [saved.bases[0], mine.bases[1], c] });
 });
 
+it('shows a deliberate return to the original basis words beside the disputed order', () => {
+  const pending = checkpoint();
+  const returned = { ...pending, draft: { ...mine, bases: [c, a, b] },
+    conflicts: [pending.conflicts[0], {
+      path: ['bases', 'id:a', 'text'], code: 'hard-question-basis-field-review',
+      base: { exists: true, value: a.text }, mine: { exists: true, value: a.text },
+      theirs: { exists: true, value: 'Saved words' },
+    }],
+  };
+  const review = readHardQuestionThemeOrderReview(returned);
+  expect(review?.fields.map(({ path }) => path)).toEqual([['bases'], ['bases', 'id:a', 'text']]);
+  expect(review?.fields[1]).toMatchObject({ mine: { value: a.text }, theirs: { value: 'Saved words' } });
+  const result = resolveHardQuestionThemeOrderReview(returned, review!.identity, {
+    [review!.fields[0].id]: 'local', [review!.fields[1].id]: 'local',
+  });
+  expect((result.value.bases as DocumentData[]).find(row => row.id === a.id)?.text).toBe(a.text);
+});
+
+it.each(['local', 'remote'] as const)('keeps compatible stored references when choosing %s basis references with the order', side => {
+  const local = { ...b, scriptureRefs: ['John 3:21'] };
+  const remote = { ...b, scriptureRefs: [...b.scriptureRefs, 'John 3:22'] };
+  const draft = { ...initial, bases: [c, a, local] };
+  const stored = { ...initial, bases: [remote, a, c] };
+  const field = (value: string[]) => ({ exists: true, value });
+  const versions = { local: field(['John 3:21', 'John 3:22']), remote: field(remote.scriptureRefs), undecided: ['John 3:21'] };
+  const pending: SessionCheckpoint = { ...checkpoint(), draft, remoteCandidate: snapshot(2, stored), conflicts: [
+    ...mergeDocumentFields(initial, draft, stored).conflicts.filter(({ path }) => path.length === 1),
+    { path: ['bases', 'id:b', 'scriptureRefs'], code: 'hard-question-basis-field-review', base: field(b.scriptureRefs),
+      mine: field(local.scriptureRefs), theirs: field(remote.scriptureRefs), hardQuestionListVersions: versions },
+  ] };
+  const review = readHardQuestionThemeOrderReview(pending);
+  expect(review?.fields.map(({ path }) => path)).toEqual([['bases'], ['bases', 'id:b', 'scriptureRefs']]);
+  expect(review?.fields[1]).toMatchObject({ mine: versions.local, theirs: versions.remote });
+  const result = resolveHardQuestionThemeOrderReview(pending, review!.identity, {
+    [review!.fields[0].id]: 'local', [review!.fields[1].id]: side,
+  });
+  expect(result.value.bases).toEqual([c, a, { ...b, scriptureRefs: versions[side].value }]);
+  expect(result.reviewedBases).toEqual([{ id: 'b', field: 'scriptureRefs', side, referenceItems: versions.undecided }]);
+});
+
 it('requires all choices and a current review identity', () => {
   const pending = checkpoint();
   const review = readHardQuestionThemeOrderReview(pending)!;

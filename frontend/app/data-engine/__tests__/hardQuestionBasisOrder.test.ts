@@ -1,4 +1,6 @@
 /** @jest-environment node */
+import { createHash } from 'node:crypto';
+
 import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineHarness';
 import { installWorldFirestore } from '@test-utils/deviceWorld/firestore';
 
@@ -92,6 +94,47 @@ it('keeps the later valid reference list when combining two edits would remove t
     scriptureRefs: authored(basis.scriptureRefs, phone.scriptureRefs, 160),
   })).toMatchObject({ kind: 'acknowledged' });
   expect((await readDocument(owner, resource)).value?.bases).toEqual([phone, otherBasis]);
+});
+
+it('merges and records independently timed reference additions to two bases in one replacement', async () => {
+  const db = installWorldFirestore(() => epoch + 300);
+  expect(await processCommand(owner, { protocol: 1, owner, resource, operationId: metadata.generation,
+    kind: 'create', dependsOn: [], generation: null, value: opening })).toMatchObject({ kind: 'acknowledged' });
+  const deskA = { ...basis, scriptureRefs: [...basis.scriptureRefs, 'John 3:20'] };
+  const deskB = { ...otherBasis, scriptureRefs: [...otherBasis.scriptureRefs, 'John 3:21'] };
+  expect(await saveBasis('first-basis-added-at-the-desk', opening.bases, [deskA, otherBasis], {
+    scriptureRefs: authored(basis.scriptureRefs, deskA.scriptureRefs, 90),
+  })).toMatchObject({ kind: 'acknowledged' });
+  expect(await saveBasis('second-basis-added-at-the-desk', [deskA, otherBasis], [deskA, deskB], {
+    scriptureRefs: { ...authored(otherBasis.scriptureRefs, deskB.scriptureRefs, 110, 2), rowId: otherBasis.id, rowCreatedAt: otherBasis.id },
+  })).toMatchObject({ kind: 'acknowledged' });
+  const phoneA = { ...basis, scriptureRefs: [...basis.scriptureRefs, 'John 3:22'] };
+  const phoneB = { ...otherBasis, scriptureRefs: [...otherBasis.scriptureRefs, 'John 3:23'] };
+  const result = await processCommand(owner, {
+    protocol: 1, owner, resource, operationId: 'accepted-compound-basis-references', dependsOn: [],
+    generation: metadata.generation, kind: 'update',
+    changes: [{ path: ['bases'], before: field(opening.bases), after: field([phoneA, phoneB]) }],
+    hardQuestionBasisRowActions: { scriptureRefs: [
+      authored(basis.scriptureRefs, phoneA.scriptureRefs, 40),
+      { ...authored(otherBasis.scriptureRefs, phoneB.scriptureRefs, 170, 2), rowId: otherBasis.id, rowCreatedAt: otherBasis.id },
+    ] },
+  });
+  if (result.kind !== 'acknowledged') throw new Error(JSON.stringify(result));
+  const stored = await readDocument(owner, resource);
+  expect(stored.value?.bases).toEqual([
+    { ...basis, scriptureRefs: expect.arrayContaining([...deskA.scriptureRefs, 'John 3:22']) },
+    { ...otherBasis, scriptureRefs: expect.arrayContaining([...deskB.scriptureRefs, 'John 3:23']) },
+  ]);
+  const raw = db.documents.get(`${resource.collection}/${resource.id}`);
+  const digest = (reference: string) => createHash('sha256').update(JSON.stringify(reference)).digest('base64url');
+  expect(raw?._dataEngine).toMatchObject({ hardQuestionBasisReferenceProofs: expect.arrayContaining([
+    expect.objectContaining({ id: basis.id, memberships: expect.objectContaining({ changes: expect.arrayContaining([
+      expect.objectContaining({ item: digest('John 3:22'), time: clock(40) }),
+    ]) }) }),
+    expect.objectContaining({ id: otherBasis.id, memberships: expect.objectContaining({ changes: expect.arrayContaining([
+      expect.objectContaining({ item: digest('John 3:23'), time: clock(170) }),
+    ]) }) }),
+  ]) });
 });
 
 it('combines separately added references when the resulting basis still has a valid place', async () => {

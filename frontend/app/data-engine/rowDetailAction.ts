@@ -3,7 +3,7 @@ import { existingRowField, isRowChange, proofRevision, rowConflictPath, rowConfl
 
 import type { ActionTime } from './actionClock';
 import type { DisplacedRowField, RowFieldEvidence, RowFieldObservation, RowFieldTarget, RowValue } from './rowFieldAction';
-import type { ConflictDetail, FieldChange, ResourceSnapshot } from './types';
+import type { ConflictDetail, DataCommand, FieldChange, ResourceSnapshot } from './types';
 
 export type RowDetailObservation<Value extends RowValue> = RowFieldObservation<Value> & {
   rowCreatedAt: string;
@@ -42,6 +42,7 @@ export type RowDetailPolicy<Field extends string, Value extends RowValue> = {
   proofs: string;
   actions: string;
   repeatedFields?: readonly Field[];
+  submissions?: (command: Extract<DataCommand, { kind: 'update' }>, field: Field) => readonly unknown[];
   acceptsRowId?: (value: unknown) => value is string;
   proofRowId?: (rowId: string) => string;
   allowUnclocked?: boolean;

@@ -13,7 +13,7 @@ import type { DocumentTagIntent } from './documentTagCapture';
 import type { ExegeticalPointStamp } from './exegeticalPointAction';
 import type { ExegeticalPointEdit } from './exegeticalPointCapture';
 import type { GroupMeetingFieldActions } from './groupMeetingFieldAction';
-import type { HardQuestionBasisActions, HardQuestionBasisReview } from './hardQuestionBasisFields';
+import type { HardQuestionBasisActions, HardQuestionBasisReview, HardQuestionBasisRowActions } from './hardQuestionBasisFields';
 import type { HardQuestionFieldReview, HardQuestionFieldStamps } from './hardQuestionFieldAction';
 import type { HardQuestionGroupProposal } from './hardQuestionGroupCreation';
 import type { HardQuestionPlacement, HardQuestionPlacementOpening } from './hardQuestionPlacement';
@@ -97,7 +97,7 @@ export type EditorCommitAction =
   | (ExegeticalPointEdit & { time: ActionTime | null; shown?: ShownCopy })
   | { kind: 'sermon-plan-mode'; mode: SermonPlanModeCapture }
   | { kind: 'account-preference'; time: ActionTime | null; fields?: readonly AccountPreferenceField[] }
-  | { kind: 'document-metadata'; time: ActionTime | null; homileticPositionReview?: HomileticList; sermonMetadataReview?: import('./documentFieldAction').SermonMetadataReviewProofs; seriesFieldReview?: import('./seriesFieldAction').SeriesFieldReview; hardQuestionFieldReview?: HardQuestionFieldReview; hardQuestionBasisReview?: HardQuestionBasisReview; hardQuestionPlacementReviewed?: true; hardQuestionPlacementOpening?: HardQuestionPlacementOpening }
+  | { kind: 'document-metadata'; time: ActionTime | null; homileticPositionReview?: HomileticList; sermonMetadataReview?: import('./documentFieldAction').SermonMetadataReviewProofs; seriesFieldReview?: import('./seriesFieldAction').SeriesFieldReview; hardQuestionFieldReview?: HardQuestionFieldReview; hardQuestionBasisReview?: HardQuestionBasisReview; hardQuestionBasisReviews?: readonly HardQuestionBasisReview[]; hardQuestionPlacementReviewed?: true; hardQuestionPlacementOpening?: HardQuestionPlacementOpening }
   | { kind: 'sermon-preparation-check'; field: PreparationConfirmation; time: ActionTime | null; reviewed?: true }
   | { kind: 'thought-placement'; rowId: string; time: ActionTime | null; shown?: ShownCopy }
   | { kind: 'service-order-placement'; move: ServiceOrderPlacementCapture }
@@ -316,6 +316,7 @@ export type DataCommand = CommandBase & (
       seriesFieldActions?: SeriesFieldStamps;
       hardQuestionFieldActions?: HardQuestionFieldStamps;
       hardQuestionBasisFieldActions?: HardQuestionBasisActions;
+      hardQuestionBasisRowActions?: HardQuestionBasisRowActions;
       hardQuestionPlacement?: HardQuestionPlacement;
       groupTitleAction?: DocumentFieldObservation;
       groupStatusAction?: DocumentFieldObservation;

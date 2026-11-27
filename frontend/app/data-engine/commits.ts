@@ -37,6 +37,7 @@ import { captureMeetingFieldActions, GROUP_MEETING_FIELD_POLICY, matchingMeeting
 import { groupMeetingReviewForSave } from './groupMeetingReview';
 import { groupStepPlacementPredecessor, groupStepWitness, projectGroupStepOnDocument } from './groupStepPlacement';
 import { captureHardQuestionBasisFields, HARD_QUESTION_BASIS_POLICY } from './hardQuestionBasisFields';
+import { captureHardQuestionBasisRowActions, matchingHardQuestionBasisRowActions, pendingHardQuestionBasisRowRebases } from './hardQuestionBasisQueue';
 import { HARD_QUESTION_GROUP_CREATE, type HardQuestionGroupIntent } from './hardQuestionGroupCreation';
 import { captureHardQuestionPlacement, matchesHardQuestionPlacement, projectHardQuestionPlace, type HardQuestionPlacement } from './hardQuestionPlacement';
 import { hardQuestionRankCollection, HARD_QUESTION_REORDER, type CapturedHardQuestionRankWitness, type HardQuestionRankOpening, type HardQuestionRankScope } from './hardQuestionRankOrder';
@@ -78,7 +79,7 @@ import type { DocumentFieldObservation, PreparationTextObservations, SermonChurc
 import type { ExegeticalPointStamp } from './exegeticalPointAction';
 import type { GroupMeetingFieldActions, GroupMeetingFieldCaptures } from './groupMeetingFieldAction';
 import type { GroupTextReviewStage } from './groupTextReview';
-import type { HardQuestionBasisActions } from './hardQuestionBasisFields';
+import type { HardQuestionBasisActions, HardQuestionBasisRowActions } from './hardQuestionBasisFields';
 import type { HardQuestionFieldObservations } from './hardQuestionFieldAction';
 import type { HomileticMoveActions, HomileticMoveGesture, HomileticPositionReviews, HomileticTitleActions } from './homileticPlan';
 import type { SeriesMembershipCapture } from './membershipIntent';
@@ -209,6 +210,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   seriesFieldActions?: SeriesFieldObservations;
   hardQuestionFieldActions?: HardQuestionFieldObservations;
   hardQuestionBasisFieldActions?: HardQuestionBasisActions;
+  hardQuestionBasisRowActions?: HardQuestionBasisRowActions;
   hardQuestionPlacement?: HardQuestionPlacement;
   prayerTextActions?: PrayerTextObservations;
   groupTitleAction?: DocumentFieldObservation;
@@ -379,6 +381,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.seriesFieldActions ?? null, incoming.seriesFieldActions ?? null)
     || !equalValues(current.hardQuestionFieldActions ?? null, incoming.hardQuestionFieldActions ?? null)
     || !equalValues(current.hardQuestionBasisFieldActions ?? null, incoming.hardQuestionBasisFieldActions ?? null)
+    || !equalValues(current.hardQuestionBasisRowActions ?? null, incoming.hardQuestionBasisRowActions ?? null)
     || !equalValues(current.hardQuestionPlacement ?? null, incoming.hardQuestionPlacement ?? null)
     || !equalValues(current.seriesMembership ?? null, incoming.seriesMembership ?? null)
     || !equalValues(current.groupTitleAction ?? null, incoming.groupTitleAction ?? null)
@@ -510,6 +513,7 @@ function pendingRowFields(record: CommitRequest) {
     ...pendingRowDetailRebases(record, record.serviceOrderStepBodyActions, SERVICE_ORDER_STEP_BODY_POLICY),
     ...pendingRowDetailRebases(record, record.serviceOrderStepScriptureActions, SERVICE_ORDER_STEP_SCRIPTURE_POLICY),
     ...pendingRowDetailRebases(record, record.hardQuestionBasisFieldActions, HARD_QUESTION_BASIS_POLICY),
+    ...pendingHardQuestionBasisRowRebases(record),
     ...pendingRowDetailRebases(record, record.councilAssemblyActions, COUNCIL_ASSEMBLY_POLICY),
     ...pendingRowDetailRebases(record, record.councilTopicKindActions, COUNCIL_TOPIC_KIND_POLICY),
     ...pendingAutosaveRowFieldRebases(record),
@@ -1035,8 +1039,12 @@ export class CommitQueue {
     const hardQuestionPlacement = captureHardQuestionPlacement(baseline, predecessor ? predecessor.value : baseline.value,
       intent.draft, metadataTime, predecessor?.hardQuestionPlacement && { id: predecessor.id, move: predecessor.hardQuestionPlacement },
       confirmQuestionPlacement || undefined, editorAction?.kind === 'document-metadata' ? editorAction.hardQuestionPlacementOpening : undefined);
-    const hardQuestionBasisFieldActions = captureHardQuestionBasisFields(baseline, predecessor, intent.draft, metadataTime, records,
-      editorAction?.kind === 'document-metadata' ? editorAction.hardQuestionBasisReview : undefined);
+    const basisAction = editorAction?.kind === 'document-metadata' ? editorAction : undefined;
+    const basisReviews = basisAction?.hardQuestionBasisReviews;
+    const hardQuestionBasisFieldActions = !basisReviews
+      ? captureHardQuestionBasisFields(baseline, predecessor, intent.draft, metadataTime, records, basisAction?.hardQuestionBasisReview) : undefined;
+    const hardQuestionBasisRowActions = basisReviews
+      ? captureHardQuestionBasisRowActions(baseline, predecessor, intent.draft, metadataTime, records, basisReviews) : undefined;
     const metadataFields = textRetry
       ? { ...capturedMetadata, ...capturedSermonTextRetry(textRetry,
         'sermonPreparationTextActions' in capturedMetadata ? capturedMetadata.sermonPreparationTextActions : undefined) }
@@ -1097,6 +1105,7 @@ export class CommitQueue {
       ...(prayerTextActions && { prayerTextActions }),
       ...metadataFields,
       ...(hardQuestionBasisFieldActions && { hardQuestionBasisFieldActions }),
+      ...(hardQuestionBasisRowActions && { hardQuestionBasisRowActions }),
       ...(hardQuestionPlacement && { hardQuestionPlacement }),
       ...(churchRecovery && { sermonChurchAction: churchRecovery.observation, sermonChurchFill: churchRecovery.fill }),
       ...(preparationChecks && { sermonPreparationCheckActions: preparationChecks }),
@@ -1852,6 +1861,8 @@ export class CommitQueue {
       }
       const basisFields = matchingRowDetailActions(command.changes, record.hardQuestionBasisFieldActions, HARD_QUESTION_BASIS_POLICY);
       if (basisFields) command.hardQuestionBasisFieldActions = basisFields;
+      const basisRows = matchingHardQuestionBasisRowActions(command.changes, record);
+      if (basisRows) command.hardQuestionBasisRowActions = basisRows;
       const exegeticalActions = matchingExegeticalPointActions(command.changes, record.exegeticalPlanActions);
       if (exegeticalActions) command.exegeticalPlanActions = exegeticalActions;
       const homileticTitles = matchingHomileticTitles(command.changes, record.homileticTitleActions);

@@ -364,6 +364,167 @@ it.each([
   }
 });
 
+it.each([['local', false], ['remote', false], ['local', true]] as const)(
+  'keeps timestamps of separately saved bases when choosing %s disputed words (renew: %s)', async (side, renew) => {
+    const serverMs = 1_800_000_000_000;
+    const time = (offset: number) => ({ earliestMs: serverMs + offset, latestMs: serverMs + offset + 5 });
+    const originals = [...opening.bases, basisThree];
+    const initial = { ...opening, bases: originals };
+    installWorldFirestore(() => serverMs);
+    expect(await processCommand(owner, { protocol: 1, owner, resource, operationId: metadata.generation,
+      dependsOn: [], kind: 'create', generation: null, value: initial })).toMatchObject({ kind: 'acknowledged' });
+    const computer = { ...initialBasis, text: 'Disputed server words' };
+    let intervened = false;
+    const h = documentEngineHarness({ ...snapshot, value: initial }, { apply: async command => {
+      if (renew && !intervened && command.kind === 'update' && command.hardQuestionBasisRowActions?.text?.some(action => action.reviewed)) {
+        intervened = true;
+        const revise = (operationId: string, before: string, after: string, observedRevision: number) => processCommand(owner, {
+          protocol: 1, owner, resource, operationId, dependsOn: [], generation: metadata.generation, kind: 'update',
+          changes: [{ path: ['bases'], before: { exists: true, value: [basisTwo, { ...computer, text: before }, basisThree] },
+            after: { exists: true, value: [basisTwo, { ...computer, text: after }, basisThree] } }],
+          hardQuestionBasisFieldActions: { text: { rowId: computer.id, rowCreatedAt: computer.id, before, after, time: null, observedRevision } },
+        });
+        expect(await revise('change-shown-basis', computer.text, 'Temporary wording after the choice', 2)).toMatchObject({ kind: 'acknowledged' });
+        expect(await revise('return-shown-basis', 'Temporary wording after the choice', computer.text, 3)).toMatchObject({ kind: 'acknowledged' });
+      }
+      return processCommand(owner, command);
+    } });
+    const browser = h.createBrowser();
+    browser.engine.setOwner(owner);
+    browser.engine.setOnline(false);
+    try {
+      const editor = await browser.engine.openEditor(resource, browser.editorId(resource));
+      const phone = { ...initialBasis, text: 'Disputed phone words' };
+      const independent = { ...basisTwo, text: 'Separately saved earlier words' };
+      const later = { ...basisThree, text: 'Separately saved later words' };
+      await editor.commit(current => ({ ...current!, bases: [basisThree, phone, basisTwo] }));
+      const stage = (basis: typeof independent | typeof later, offset: number) => editor.commit(current => ({
+        ...current!, bases: (current!.bases as DocumentData[]).map(item => item.id === basis.id ? { ...item, text: basis.text } : item),
+      }), { kind: 'document-metadata', time: time(offset) });
+      await stage(independent, -60);
+      await stage(later, -20);
+      expect(await overwriteBases('computer-order-and-basis-text', [basisTwo, computer, basisThree], originals))
+        .toMatchObject({ kind: 'acknowledged' });
+      browser.engine.setOnline(true);
+      await browser.engine.retry();
+      await settleEngine();
+      const compared = editor.getState().checkpoint;
+      expect(Object.keys(compared.pending)).toHaveLength(3);
+      const review = readHardQuestionThemeOrderReview(compared)!;
+      expect(review.fields.map(({ path }) => path)).toEqual([['bases'], ['bases', 'id:b1', 'text']]);
+      jest.mocked(h.transport.read).mockImplementation(async () => readDocument(owner, resource));
+      await editor.applyHardQuestionThemeOrderReview!(compared, review.identity, {
+        [review.fields[0].id]: 'local', [review.fields[1].id]: side,
+      }, time(-1));
+      await browser.engine.retry();
+      await settleEngine();
+      if (renew) {
+        const current = editor.getState().checkpoint;
+        expect(current.conflicts).toMatchObject([{ path: ['bases', 'id:b1', 'text'], code: 'hard-question-basis-field-review' }]);
+        const again = readHardQuestionThemeOrderReview(current);
+        expect(again?.fields.map(({ path }) => path)).toEqual([['bases', 'id:b1', 'text']]);
+        await editor.applyHardQuestionThemeOrderReview!(current, again!.identity, { [again!.fields[0].id]: 'local' }, time(0));
+        await browser.engine.retry();
+        await settleEngine();
+      }
+      expect((await readDocument(owner, resource)).value?.bases).toEqual([later, side === 'local' ? phone : computer, independent]);
+      const command = jest.mocked(h.transport.send).mock.calls.at(-1)?.[0];
+      expect(command).toMatchObject({ kind: 'update', hardQuestionBasisRowActions: {
+        text: expect.arrayContaining([
+          expect.objectContaining({ rowId: independent.id, time: time(-60), observedRevision: 1 }),
+          expect.objectContaining({ rowId: later.id, time: time(-20), observedRevision: 1 }),
+          ...(side === 'local' ? [expect.objectContaining({ rowId: phone.id, time: time(renew ? 0 : -1), observedRevision: renew ? 4 : 2, reviewed: true })] : []),
+        ]),
+      } });
+      const delayed = { ...basisTwo, text: 'Arrived late but typed before both saved actions' };
+      const newest = { ...basisThree, text: 'Actually typed after both saved actions' };
+      const answer = await processCommand(owner, { protocol: 1, owner, resource, operationId: 'delayed-basis-edits',
+        dependsOn: [], generation: metadata.generation, kind: 'update',
+        changes: [{ path: ['bases'], before: { exists: true, value: originals }, after: { exists: true, value: [initialBasis, delayed, newest] } }],
+        hardQuestionBasisRowActions: { text: [
+          { rowId: independent.id, rowCreatedAt: independent.id, before: null, after: delayed.text, time: time(-90), observedRevision: 1 },
+          { rowId: later.id, rowCreatedAt: later.id, before: null, after: newest.text, time: time(-10), observedRevision: 1 },
+        ] },
+      });
+      if (answer.kind !== 'acknowledged') throw new Error(JSON.stringify(answer));
+      expect((await readDocument(owner, resource)).value?.bases).toEqual([newest, side === 'local' ? phone : computer, independent]);
+    } finally {
+      browser.dispose();
+      await settleEngine();
+    }
+  });
+
+it('rechecks a previously confirmed basis when a different basis has already needed a second choice', async () => {
+  const serverMs = 1_800_000_000_000;
+  const time = (offset: number) => ({ earliestMs: serverMs + offset, latestMs: serverMs + offset + 5 });
+  const originals = [...opening.bases, basisThree];
+  const initial = { ...opening, bases: originals };
+  const one = { ...initialBasis, text: 'Mine on the first basis' };
+  const two = { ...basisTwo, text: 'Mine on the second basis' };
+  const deskOne = { ...initialBasis, text: 'Saved on the first basis' };
+  const deskTwo = { ...basisTwo, text: 'Saved on the second basis' };
+  installWorldFirestore(() => serverMs);
+  expect(await processCommand(owner, { protocol: 1, owner, resource, operationId: metadata.generation,
+    dependsOn: [], kind: 'create', generation: null, value: initial })).toMatchObject({ kind: 'acknowledged' });
+  let sentChoices = 0;
+  const h = documentEngineHarness({ ...snapshot, value: initial }, { apply: async command => {
+    if (command.kind !== 'update' || !command.hardQuestionBasisRowActions?.text?.some(action => action.reviewed)) return processCommand(owner, command);
+    sentChoices += 1;
+    if (sentChoices === 2) expect(command.hardQuestionBasisRowActions.text).toEqual(expect.arrayContaining([
+      expect.objectContaining({ rowId: one.id, observedRevision: 2, time: time(-3), reviewed: true }),
+      expect.objectContaining({ rowId: two.id, observedRevision: 4, time: time(-2), reviewed: true }),
+    ]));
+    if (sentChoices <= 2) {
+      const shown = sentChoices === 1 ? deskTwo : deskOne;
+      const latest = await readDocument(owner, resource);
+      const rows = latest.value!.bases as DocumentData[];
+      const modified = rows.map(row => row.id === shown.id ? { ...row, text: 'Temporary change on ' + shown.id } : row);
+      const revise = (suffix: string, from: DocumentData[], to: DocumentData[], before: string, after: string, revision: number) =>
+        processCommand(owner, { protocol: 1, owner, resource, operationId: 'other-device-' + shown.id + '-' + suffix,
+          dependsOn: [], generation: metadata.generation, kind: 'update',
+          changes: [{ path: ['bases'], before: { exists: true, value: from }, after: { exists: true, value: to } }],
+          hardQuestionBasisFieldActions: { text: { rowId: shown.id, rowCreatedAt: shown.id, before, after, observedRevision: revision, time: null } },
+        });
+      const temp = 'Temporary change on ' + shown.id;
+      const revision = latest.metadata!.revision;
+      expect(await revise('new', rows, modified, shown.text, temp, revision)).toMatchObject({ kind: 'acknowledged' });
+      expect(await revise('return', modified, rows, temp, shown.text, revision + 1)).toMatchObject({ kind: 'acknowledged' });
+    }
+    return processCommand(owner, command);
+  } });
+  const browser = h.createBrowser();
+  browser.engine.setOwner(owner);
+  browser.engine.setOnline(false);
+  try {
+    const editor = await browser.engine.openEditor(resource, browser.editorId(resource));
+    await editor.commit(current => ({ ...current!, bases: [basisThree, one, basisTwo] }));
+    await editor.commit(current => ({ ...current!, bases: [basisThree, one, two] }),
+      { kind: 'document-metadata', time: time(-40) });
+    await overwriteBases('desk-order-and-both-words', [deskTwo, deskOne, basisThree], originals);
+    browser.engine.setOnline(true);
+    await browser.engine.retry();
+    await settleEngine();
+    jest.mocked(h.transport.read).mockImplementation(async () => readDocument(owner, resource));
+    const choose = async (paths: string[][], offset: number) => {
+      const compared = editor.getState().checkpoint;
+      const review = readHardQuestionThemeOrderReview(compared);
+      expect(review?.fields.map(field => field.path)).toEqual(paths);
+      await editor.applyHardQuestionThemeOrderReview!(compared, review!.identity,
+        Object.fromEntries(review!.fields.map(field => [field.id, 'local'])), time(offset));
+      await browser.engine.retry();
+      await settleEngine();
+    };
+    await choose([['bases'], ['bases', 'id:b1', 'text'], ['bases', 'id:b2', 'text']], -3);
+    await choose([['bases', 'id:b2', 'text']], -2);
+    await choose([['bases', 'id:b1', 'text']], -1);
+    expect(sentChoices).toBe(3);
+    expect(await readDocument(owner, resource)).toMatchObject({ metadata: { revision: 7 }, value: { bases: [basisThree, one, two] } });
+  } finally {
+    browser.dispose();
+    await settleEngine();
+  }
+});
+
 it('includes a later captured form save and keeps its newer unsent words separate', async () => {
   const originals = [...opening.bases, basisThree];
   const initial = { ...opening, bases: originals };

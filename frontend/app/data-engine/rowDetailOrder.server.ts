@@ -237,7 +237,8 @@ function orderUnobservedRowDetail<Field extends string, Value extends RowValue>(
   return { command };
 }
 
-function submissions<Field extends string, Value extends RowValue>(command: Update, field: Field, policy: RowDetailPolicy<Field, Value>): unknown[] {
+function submissions<Field extends string, Value extends RowValue>(command: Update, field: Field, policy: RowDetailPolicy<Field, Value>): readonly unknown[] {
+  if (policy.submissions) return policy.submissions(command, field);
   const raw: unknown = Reflect.get(command, policy.actions);
   if (policy.repeatedFields?.includes(field)) {
     if (!Array.isArray(raw)) return [];

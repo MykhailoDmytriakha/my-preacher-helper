@@ -1,6 +1,6 @@
 import { isAuthoredStringList } from './authoredStringList';
 import { equalValues, object } from './fieldValues';
-import { BASIS_FIELD_REVIEW, BASIS_REFERENCE_PROJECTION, HARD_QUESTION_BASIS_POLICY, readHardQuestionBasisField } from './hardQuestionBasisFields';
+import { BASIS_FIELD_REVIEW, BASIS_REFERENCE_PROJECTION, HARD_QUESTION_BASIS_POLICY, hardQuestionBasisActionsForField, readHardQuestionBasisField } from './hardQuestionBasisFields';
 import { hardQuestionListItemChanges } from './hardQuestionFieldAction';
 import { compatibleQuestionConfirmations, hasUnseenQuestionListItems, nextHardQuestionListMemberships, planHardQuestionList, readCarriedQuestionItems } from './hardQuestionListOrder.server';
 import { hasBasisScripture } from './hardQuestionThemeLists';
@@ -27,24 +27,33 @@ function storedProofs(raw: unknown) {
 /** Keep the time of an individual removal or addition even when the same Save affected other places. */
 export function orderBasisReferences(command: DataCommand, current: ResourceSnapshot, raw: unknown, serverMs: number) {
   const uncertain: ConflictDetail[] = [], projections: ConflictDetail[] = [];
-  let proof: ReferenceWrite | undefined;
-  let resolvedReview: string | undefined;
+  const writes: ReferenceWrite[] = [];
+  const resolvedReviews = new Set<string>();
   if (command.resource.collection !== HARD_QUESTION_BASIS_POLICY.collection || command.kind !== 'update'
-    || !current.value || !current.metadata || current.metadata.deleted || command.generation !== current.metadata.generation) return { command, uncertain, proof, projections };
+    || !current.value || !current.metadata || current.metadata.deleted || command.generation !== current.metadata.generation) {
+    return { command, uncertain, writes, resolvedReviews, projections };
+  }
   const change = command.changes.find(item => item.path.length === 1 && item.path[0] === 'bases');
-  if (!change || !Array.isArray(change.before.value) || !Array.isArray(change.after.value)) return { command, uncertain, proof, projections };
+  if (!change || !Array.isArray(change.before.value) || !Array.isArray(change.after.value)) {
+    return { command, uncertain, writes, resolvedReviews, projections };
+  }
   const { revision } = current.metadata;
-  const rawAction = command.hardQuestionBasisFieldActions?.scriptureRefs;
-  const timed = readRowObservation(command, rawAction, refs, serverMs, { allowUnclocked: true, allowUnchanged: () => rawAction?.reviewed === true });
-  const action = timed && rawAction && timed.observedRevision <= revision
-    && matchesRowDetailBirth(command.changes, rawAction, HARD_QUESTION_BASIS_POLICY.birth) ? timed : undefined;
+  const submitted = command;
+  const actions = new Map(hardQuestionBasisActionsForField(submitted, 'scriptureRefs').flatMap(raw => {
+    const stamp = readRowObservation(submitted, raw, refs, serverMs, { allowUnclocked: true, allowUnchanged: () => raw.reviewed === true });
+    return stamp && stamp.observedRevision <= revision && matchesRowDetailBirth(submitted.changes, raw, HARD_QUESTION_BASIS_POLICY.birth)
+      ? [[stamp.rowId, { raw, stamp }]] as const : [];
+  }));
+  let adjusted = change;
+  const processed = new Set<string>();
   const before = existingRowFields(change.before.value, refs), after = existingRowFields(change.after.value, refs);
   const saved = existingRowFields(current.value.bases, refs);
   const proofs = storedProofs(raw);
   for (const [rowId, from] of before) {
     const to = after.get(rowId), live = saved.get(rowId);
     if (!Array.isArray(from) || !Array.isArray(to) || !Array.isArray(live) || !hasBasisScripture(to)) continue;
-    const stamp = action?.rowId === rowId ? action : undefined;
+    const entry = actions.get(rowId);
+    const rawAction = entry?.raw, stamp = entry?.stamp;
     const previous = proofs.find(item => item.id === rowId);
     const openings = { path: ['scriptureRefs'], before: field(from), after: field(to) };
     const review = stamp && rawAction?.reviewed === true;
@@ -58,7 +67,7 @@ export function orderBasisReferences(command: DataCommand, current: ResourceSnap
       const unseen = hasUnseenQuestionListItems(affected, previous, stamp.observedRevision, revision);
       fresh = !unseen && (stamp.observedRevision === revision || Boolean(fieldProof && fieldProof.revision <= stamp.observedRevision));
       if (fresh && !confirmed.length) {
-        proof = { rowId, time: stamp.time, reaffirmed: [] };
+        writes.push({ rowId, time: stamp.time, reaffirmed: [] });
         continue;
       }
     }
@@ -83,29 +92,43 @@ export function orderBasisReferences(command: DataCommand, current: ResourceSnap
     } else if (result && stamp && isAuthoredStringList(result.value.value) && hasBasisScripture(result.value.value)) {
       const references = result.value.value;
       const reaffirmed = review ? compatibleQuestionConfirmations(confirmed, stamp, previous, revision) : [];
-      proof = { rowId, time: stamp.time, carried,
-        reaffirmed: [...new Map([...result.reaffirmed, ...reaffirmed].map(item => [item.item, item])).values()] };
-      if (review) resolvedReview = rowId;
+      writes.push({ rowId, time: stamp.time, carried,
+        reaffirmed: [...new Map([...result.reaffirmed, ...reaffirmed].map(item => [item.item, item])).values()] });
+      if (review) resolvedReviews.add(rowId);
       if (!equalValues(references, to)) {
         projections.push({ path: ['bases', 'id:' + rowId, 'scriptureRefs'], code: BASIS_REFERENCE_PROJECTION,
           base: field(to), mine: field(references), theirs: field(live) });
       }
       // An earlier independent item can be valid even when the complete array has a newer clock.
       if (!review && stamp.observedRevision === revision && equalValues(references, to) && equalValues(from, live)) continue;
-      const { scriptureRefs: _settled, ...otherFields } = command.hardQuestionBasisFieldActions ?? {};
-      command = { ...command, hardQuestionBasisFieldActions: otherFields, changes: command.changes.map(item => item === change ? {
-        ...item, before: { ...item.before, value: replaceExistingRowField(item.before.value, rowId, live, refs) },
-        after: { ...item.after, value: replaceExistingRowField(item.after.value, rowId, references, refs) },
-      } : item) };
+      processed.add(rowId);
+      adjusted = { ...adjusted,
+        before: { ...adjusted.before, value: replaceExistingRowField(adjusted.before.value, rowId, live, refs) },
+        after: { ...adjusted.after, value: replaceExistingRowField(adjusted.after.value, rowId, references, refs) },
+      };
     } else if (review && confirmed.length) {
       uncertain.push({ path: ['bases', 'id:' + rowId, 'scriptureRefs'], code: BASIS_FIELD_REVIEW,
         base: field(from), mine: field(to), theirs: field(live) });
     }
   }
-  return { command, uncertain, proof, resolvedReview, projections };
+  if (processed.size) {
+    const { scriptureRefs: single, ...singleFields } = command.hardQuestionBasisFieldActions ?? {};
+    const { scriptureRefs: repeated, ...repeatedFields } = command.hardQuestionBasisRowActions ?? {};
+    const remaining = Array.isArray(repeated) ? repeated.filter(item => !processed.has(item?.rowId)) : [];
+    command = { ...command, changes: command.changes.map(item => item === change ? adjusted : item),
+      ...(command.hardQuestionBasisFieldActions && { hardQuestionBasisFieldActions: {
+        ...singleFields, ...(single && !processed.has(single.rowId) && { scriptureRefs: single }),
+      } }),
+      ...(command.hardQuestionBasisRowActions && { hardQuestionBasisRowActions: {
+        ...repeatedFields, ...(remaining.length && { scriptureRefs: remaining }),
+      } }),
+    };
+  }
+  return { command, uncertain, writes, resolvedReviews, projections };
 }
 
-export function metadataAfterBasisReferences(snapshot: ResourceSnapshot, raw: Record<string, unknown> | undefined, write?: ReferenceWrite) {
+export function metadataAfterBasisReferences(snapshot: ResourceSnapshot, raw: Record<string, unknown> | undefined,
+  writes: ReadonlyMap<string, ReferenceWrite>) {
   const metadata = snapshot.metadata;
   if (snapshot.resource.collection !== HARD_QUESTION_BASIS_POLICY.collection || !metadata || !snapshot.value) return metadata;
   const previous = raw?._dataEngine;
@@ -118,7 +141,7 @@ export function metadataAfterBasisReferences(snapshot: ResourceSnapshot, raw: Re
     const before = readHardQuestionBasisField(raw as DocumentData, id, 'scriptureRefs');
     if (!Array.isArray(values) || !before.exists) return [];
     const prior = stored.find(item => item.id === id);
-    const action = write?.rowId === id ? write : undefined;
+    const action = writes.get(id);
     if (!prior && !action && equalValues(before, after)) return [];
     const memberships = nextHardQuestionListMemberships(prior, before, after, metadata.revision, old, metadata.operationId,
       { time: action?.time ?? null, reaffirmed: action?.reaffirmed, carried: action?.carried });

@@ -34,6 +34,7 @@ import { captureGroupMeetingReview } from './groupMeetingReview';
 import { retryGroupStepPlacement } from './groupStepPlacement';
 import { groupTextDecision, isGroupStatusComparison, projectGroupTextDecisions, readGroupFlowTextChoice, readGroupTextReview, sameGroupText, writeGroupFlowTextChoice } from './groupTextReview';
 import { hardQuestionBasisConflict } from './hardQuestionBasisFields';
+import { orderedHardQuestionBasisReviews } from './hardQuestionBasisQueue';
 import { hardQuestionField, type HardQuestionFieldObservations } from './hardQuestionFieldAction';
 import { resolveHardQuestionPlacementReview } from './hardQuestionPlacementChoice';
 import { HARD_QUESTION_REORDER } from './hardQuestionRankOrder';
@@ -266,9 +267,12 @@ function captureSaveOptions(captured: SessionCheckpoint, pending: [string, Sessi
   return Object.keys(options).length ? options : undefined;
 }
 
-function orderedQuestionActions(source: SessionCheckpoint, pending: readonly CommitRequest[]) {
-  return [...pending].sort((first, second) => source.pending[first.id].generation - source.pending[second.id].generation)
-    .reduce<HardQuestionFieldObservations>((fields, entry) => ({ ...fields, ...entry.hardQuestionFieldActions }), {});
+function orderedQuestionRequests(source: SessionCheckpoint, pending: readonly CommitRequest[]) {
+  return [...pending].sort((first, second) => source.pending[first.id].generation - source.pending[second.id].generation);
+}
+
+function orderedQuestionActions(pending: readonly CommitRequest[]) {
+  return pending.reduce<HardQuestionFieldObservations>((fields, entry) => ({ ...fields, ...entry.hardQuestionFieldActions }), {});
 }
 
 export class EditorController {
@@ -537,10 +541,13 @@ export class EditorController {
   applyHardQuestionThemeOrderReview(compared: SessionCheckpoint, identity: string, choices: HardQuestionThemeOrderChoices,
     choiceTime: ActionTime | null): Promise<void> {
     return this.applyHardQuestionReview(compared, (source, pending) => {
-      const original = orderedQuestionActions(source, pending);
-      const { value, reviewedText } = resolveHardQuestionThemeOrderReview(source, identity, choices);
-      return { value, action: Object.keys(original).length || reviewedText.length ? {
+      const ordered = orderedQuestionRequests(source, pending);
+      const original = orderedQuestionActions(ordered);
+      const { value, reviewedText, reviewedBases } = resolveHardQuestionThemeOrderReview(source, identity, choices);
+      const basisReviews = orderedHardQuestionBasisReviews(ordered, reviewedBases);
+      return { value, action: Object.keys(original).length || reviewedText.length || basisReviews.length ? {
         kind: 'document-metadata', time: choiceTime, hardQuestionFieldReview: { fields: reviewedText, original },
+        hardQuestionBasisReviews: basisReviews,
       } : undefined };
     });
   }
@@ -550,7 +557,7 @@ export class EditorController {
     return this.applyHardQuestionReview(compared, (source, pending) => ({
       value: resolveHardQuestionPlacementReview(source, identity, choice), force: true,
       action: { kind: 'document-metadata', time: choiceTime, hardQuestionPlacementReviewed: true,
-        hardQuestionFieldReview: { fields: [], original: orderedQuestionActions(source, pending) } },
+        hardQuestionFieldReview: { fields: [], original: orderedQuestionActions(orderedQuestionRequests(source, pending)) } },
     }));
   }
 

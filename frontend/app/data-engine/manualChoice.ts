@@ -12,12 +12,13 @@ import { writeField } from './fieldValues';
 import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
 import { captureGroupMeetingReview } from './groupMeetingReview';
 import { captureGroupStepPlacement, carryAnchoredDraftChronology, groupPlacementSteps, mergeEditsAfterAnchoredPlacement, mergeGroupFlowRebase, projectGroupStepOnDocument } from './groupStepPlacement';
-import { BASIS_FIELD_QUEUED, BASIS_FIELD_SETTLED, BASIS_REFERENCE_PROJECTION, hardQuestionBasisConflict, hardQuestionBasisField, readBasisReferenceVersions, readHardQuestionBasisField, writeBasisReferences, type HardQuestionBasisReview } from './hardQuestionBasisFields';
+import { hardQuestionBasisChoiceFrames } from './hardQuestionBasisChoice';
+import { hardQuestionBasisConflict, readBasisReferenceVersions, writeBasisReferences, type HardQuestionBasisReview } from './hardQuestionBasisFields';
 import { hardQuestionFieldTargets, hardQuestionReviewFrames, hardQuestionField, hardQuestionListVersion, readHardQuestionListVersions, type HardQuestionFieldReview } from './hardQuestionFieldAction';
 import { keepsBasisScripture } from './hardQuestionThemeLists';
 import { projectHomileticReview, reviewedHomileticList } from './homileticPlanChoice';
 import { chooseLocalPlacement } from './localPlacementChoice';
-import { projectManualSelection, sameManualSelection, type ManualPath } from './manualScope';
+import { projectManualSelection, type ManualPath } from './manualScope';
 import { projectOutlineParentChoice, type OutlineTitleDecision } from './outlineParentChoice';
 import { projectResourceOutlinePoint } from './outlinePointPlacement';
 import { chooseLocalPreachDateEdits, isOrderedPreachDateField, preachDateChoiceFrames } from './preachDateChoice';
@@ -137,35 +138,6 @@ function afterChoice(confirmed: ResourceSnapshot, draft: DocumentData | null, ge
     pending: {}, conflicts: [], remoteCandidate: null };
 }
 
-function basisChoiceFrames(basis: ResourceSnapshot, reviewed: DocumentData | null, stored: ResourceSnapshot, conflicts: readonly ConflictDetail[]) {
-  if (!basis.value || !reviewed || !stored.value || basis.metadata?.generation !== stored.metadata?.generation) {
-    return { basis, reviewed, conflicts };
-  }
-  let opening = basis.value, mine = reviewed;
-  const pending = conflicts.filter(conflict => {
-    if (conflict.code !== BASIS_FIELD_QUEUED && conflict.code !== BASIS_FIELD_SETTLED && conflict.code !== BASIS_REFERENCE_PROJECTION) return true;
-    const target = hardQuestionBasisField(conflict.path);
-    if (!target) return true;
-    const { id, field } = target;
-    const path: ManualPath = ['bases', { id }, field];
-    if (conflict.code === BASIS_REFERENCE_PROJECTION) {
-      if (!equalValues(readHardQuestionBasisField(mine, id, field), conflict.base)
-        || !equalValues(readHardQuestionBasisField(stored.value!, id, field), conflict.theirs)) return true;
-      mine = writeBasisReferences(mine, id, conflict.mine);
-      opening = projectManualSelection(opening, stored.value!, [path]);
-      return false;
-    }
-    if (sameManualSelection(mine, stored.value, path)) return false;
-    if (!equalValues(readHardQuestionBasisField(mine, id, field), conflict.mine)) return true;
-    if (conflict.code === BASIS_FIELD_SETTLED) mine = projectManualSelection(mine, opening, [path]);
-    else if (equalValues(readHardQuestionBasisField(stored.value!, id, field), conflict.theirs)) {
-      opening = projectManualSelection(opening, stored.value!, [path]);
-    } else return true;
-    return false;
-  });
-  return { basis: { ...basis, value: opening }, reviewed: mine, conflicts: pending };
-}
-
 export function manualChoiceFrames(request: CommitRequest, value: DocumentData, stored: ResourceSnapshot) {
   const prepared = request.initialized && request.command;
   const basis = prepared ? request.working : request.baseline;
@@ -177,7 +149,7 @@ export function manualChoiceFrames(request: CommitRequest, value: DocumentData, 
   if (hardQuestionFieldTargets(stored.resource.collection).length) {
     const question = hardQuestionReviewFrames(basis, reviewed, stored, conflicts);
     return stored.resource.collection === 'hardQuestionThemes'
-      ? basisChoiceFrames(question.basis, question.reviewed, stored, question.conflicts) : question;
+      ? hardQuestionBasisChoiceFrames(question.basis, question.reviewed, stored, question.conflicts) : question;
   }
   return seriesReviewFrames(basis, reviewed, stored, conflicts);
 }

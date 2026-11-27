@@ -20,7 +20,10 @@ export const BASIS_FIELD_SETTLED = 'hard-question-basis-field-settled';
 export const BASIS_FIELD_QUEUED = 'hard-question-basis-field-queued';
 export type HardQuestionBasisField = typeof HARD_QUESTION_BASIS_FIELDS[number];
 type BasisValue = string | null | string[];
-export type HardQuestionBasisActions = Partial<Record<HardQuestionBasisField, RowDetailObservation<BasisValue> & Omit<HardQuestionReviewStamp, 'basisTheme'>>>;
+type HardQuestionBasisAction = RowDetailObservation<BasisValue> & Omit<HardQuestionReviewStamp, 'basisTheme'>;
+export type HardQuestionBasisActions = Partial<Record<HardQuestionBasisField, HardQuestionBasisAction>>;
+export type HardQuestionBasisRowActions = Partial<Record<HardQuestionBasisField, HardQuestionBasisAction[]>>;
+type HardQuestionBasisEvidence = { hardQuestionBasisFieldActions?: HardQuestionBasisActions; hardQuestionBasisRowActions?: HardQuestionBasisRowActions };
 export type HardQuestionBasisReview = { id: string; fields: readonly HardQuestionBasisField[]; original: HardQuestionBasisActions; referenceItems?: readonly string[] };
 
 const basisRow: RowFieldTarget<string> = { field: 'bases', leaf: 'id', accepts: boundedRowId };
@@ -34,9 +37,21 @@ const targets = { title, label: optional('label'), text: optional('text'),
 export const HARD_QUESTION_BASIS_POLICY: RowDetailPolicy<HardQuestionBasisField, BasisValue> = {
   collection: 'hardQuestionThemes', fields: HARD_QUESTION_BASIS_FIELDS, birth: basisRow, target: field => targets[field],
   actions: 'hardQuestionBasisFieldActions', proofs: 'hardQuestionBasisFieldProofs', history: '_basisFieldHistory',
+  submissions: hardQuestionBasisActionsForField,
   allowUnclocked: true, atomicChoice: true, rememberOpenings: true, rememberReaffirmations: true,
   seedOpeningFromStoredValue: true,
 };
+
+export function hardQuestionBasisActionsForField(source: HardQuestionBasisEvidence, field: HardQuestionBasisField) {
+  const first = source.hardQuestionBasisFieldActions?.[field];
+  const repeated = source.hardQuestionBasisRowActions?.[field];
+  const actions = Array.isArray(repeated) ? [...(first ? [first] : []), ...repeated] : first ? [first] : [];
+  const byRow = new Map<string, HardQuestionBasisAction | undefined>();
+  for (const action of actions) {
+    if (action && boundedRowId(action.rowId)) byRow.set(action.rowId, byRow.has(action.rowId) ? undefined : action);
+  }
+  return [...byRow.values()].filter(action => action !== undefined);
+}
 
 export function hardQuestionBasisField(path: readonly string[]) {
   const [collectionField, row, leaf] = path;
@@ -87,7 +102,7 @@ export function captureHardQuestionBasisFields(baseline: ResourceSnapshot, prede
   for (const field of policy.fields) {
     const target = policy.target(field);
     const opening = existingRowFields(before, target);
-    const edits = [...existingRowFields(after, target)].filter(([id, value]) => value !== undefined
+    const edits = [...existingRowFields(after, target)].filter(([id, value]) => (!review || id === review.id) && value !== undefined
       && opening.get(id) !== undefined && !equalValues(opening.get(id), value));
     // The manual form saves one existing basis. An old bulk/list command cannot assign one row's time to another.
     if (edits.length !== 1) continue;
@@ -97,22 +112,41 @@ export function captureHardQuestionBasisFields(baseline: ResourceSnapshot, prede
     captures[field] = { rowId, rowCreatedAt: rowId, after: value, time: earlier?.time ?? (review && !review.fields.includes(field) ? null : time) };
   }
   const actions: HardQuestionBasisActions = captureRowDetailActions(baseline, predecessor, draft, captures,
-    records, policy, request => request.hardQuestionBasisFieldActions) ?? {};
+    records, policy, request => {
+      return Object.fromEntries(policy.fields.flatMap(field => {
+        const rowId = review?.id ?? captures[field]?.rowId;
+        const action = hardQuestionBasisActionsForField(request, field).find(item => item.rowId === rowId);
+        return action ? [[field, action]] : [];
+      }));
+    }) ?? {};
   if (review) {
     const { id, fields, original } = review;
     for (const field of policy.fields) {
       const captured = actions[field];
       const prior = original[field];
       if (!fields.includes(field)) {
-        if (!captured || prior?.rowId !== id) continue;
+        if (!captured || prior?.rowId !== id) {
+          delete actions[field];
+          continue;
+        }
+        const exactBefore = equalValues(captured.before, prior.before), exactAfter = equalValues(captured.after, prior.after);
+        if (prior.reviewed && (!exactBefore || !exactAfter)) {
+          delete actions[field];
+          continue;
+        }
         const carried = { ...captured, before: rowConflictValue(captured.before), after: rowConflictValue(captured.after) };
         const sameMembershipAction = field === 'scriptureRefs' && !prior.reviewed && carriedHardQuestionListItems(
           carried, { ...prior, before: rowConflictValue(prior.before), after: rowConflictValue(prior.after) },
         ).length === hardQuestionListItemChanges(carried.before, carried.after).size;
-        if (equalValues(captured.after, prior.after) || sameMembershipAction) {
+        if (exactAfter || sameMembershipAction) {
           actions[field] = { ...captured, time: prior.time, observedRevision: prior.observedRevision,
-            ...(equalValues(captured.before, prior.before) && prior.predecessorOperationId && { predecessorOperationId: prior.predecessorOperationId }) };
-        }
+            ...(exactBefore && prior.predecessorOperationId && { predecessorOperationId: prior.predecessorOperationId }),
+            ...(prior.reviewed && { reviewed: true,
+              ...(prior.confirmedItems && { confirmedItems: prior.confirmedItems }),
+              ...(prior.carriedItems && { carriedItems: prior.carriedItems }),
+            }),
+          };
+        } else delete actions[field];
         continue;
       }
       const target = policy.target(field);

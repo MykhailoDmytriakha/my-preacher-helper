@@ -11173,3 +11173,17 @@ Six headless Chrome scenarios tested both choices after a placement and after an
 After an authorized release, use a disposable sermon and a dedicated profile. Recover a lock or placement with an independent thought-text disagreement. Read both versions. Save different words from a second test device while the saved-choice dialog is open, confirm once, and check that the new words appear before any write. Choose a version and reload. Verify that the previously selected lock or position, and the independent words, still match.
 
 Local case evidence: `artifacts/sermon-thought-text-comparison-20261127/`.
+
+## BUG-20261127-hard-question-theme-order-choice-retimes-basis-fields · Keep each basis action when choosing theme order
+
+On Hard questions → a theme → Compare, choosing a disputed list order can replace several waiting saves. The baseline `d0a53d4a1` saved the right words in a replay of three queued operations but discarded the original clocks of two basis edits. The old browser problem and the native controller/server test agreed.
+
+The replacement carries each surviving basis action by row and field. Compatible edits keep the original observation and time; a new choice of words records the current observation and click. Requests from the single-basis form keep their existing format. The server validates and updates each row independently. In the server replay an older late delivery lost only on its own row and a truly newer edit succeeded on the other.
+
+If a saved basis changes after a choice, only that basis is shown again. Another unchanged explicit choice keeps its original confirmation and can still be checked at a later arrival. A deliberately restored opening stays visible alongside the order question. The versions of the references include independent compatible additions, and the selected item review retains its original evidence.
+
+The five focused suites passed 109 tests. TypeScript and the isolated production build passed. Scoped ESLint reported zero errors, and independent review confirmed the repeated choice and reference cases. Three headless Chrome scenarios covered both word choices and a renewed comparison on the real theme screen at 390 and 1280 px. The request retained both original clocks, and the chosen order and words survived reload. Peak sampled Next.js memory was 436 MiB. All seven emulated test ports were released.
+
+After an authorized release, use a disposable theme in the test account. Edit two bases with distinct actions and reorder the theme. Reload and verify the same selected order and both edited contents. The isolated queue replay reproduces delivery rejection, a return made from the other device during the choice, and the exact clocks on the replacement. It uses the real theme screen and a fixture-only way of staging the initial sequence.
+
+Local case evidence: `artifacts/hard-question-compound-basis-20261127/`.
