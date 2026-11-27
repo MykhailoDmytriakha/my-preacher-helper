@@ -13,6 +13,7 @@ import { orderedPreachDateFieldConflict, PREACH_DATE_FIELD_POLICY, preachDateFie
 import { hasUnseenRowText, matchesRowDetailBirth, sameRowText } from './rowDetailAction';
 import { knownRowDetailPredecessor, pendingRowDetailRebases } from './rowDetailCapture';
 import { boundedRowId, existingRowField, existingRowFields, isCapturedRowConflict, isRowChange, matchesRowAction, replaceExistingRowField, rowConflictId, rowConflictPath, rowConflictValue } from './rowFieldAction';
+import { matchesThoughtLockDraft } from './sermonThoughtLockRecovery';
 import { THOUGHT_LOCK_POLICY } from './thoughtLockAction';
 import { isThoughtLocation, isThoughtPlacementPart, THOUGHT_PLACEMENT_POLICY } from './thoughtPlacementAction';
 import { THOUGHT_TEXT_POLICY } from './thoughtTextAction';
@@ -144,8 +145,8 @@ export function unreadableRowProofs(checkpoint: Pick<SessionCheckpoint, 'confirm
   const collection = confirmed.resource.collection;
   const target = targetsFor(collection).find(item => item.draft === key);
   if (!target || !draft || !confirmed.value || !metadata || metadata.deleted) return [];
-  // Group and council forms already review individual rows against a freshly read saved version.
-  const earlier = collection === 'groups' || collection === 'councils' ? submitted : undefined;
+  // These fields already review the exact recovered row against a freshly read saved version.
+  const earlier = collection === 'groups' || collection === 'councils' || target.stamp === 'thought-lock' ? submitted : undefined;
   const rowField = target.policy.target(target.field);
   const opening = existingRowFields(confirmed.value[rowField.field], rowField);
   const proposed = existingRowFields(draft[rowField.field], rowField);
@@ -153,7 +154,7 @@ export function unreadableRowProofs(checkpoint: Pick<SessionCheckpoint, 'confirm
   const newBirths = existingRowFields(draft[rowField.field], target.policy.birth);
   const queuedFields = existingRowFields(earlier?.[rowField.field], rowField);
   const queuedBirths = existingRowFields(earlier?.[rowField.field], target.policy.birth);
-  return [...proposed].flatMap(([rowId, after]) => {
+  const unresolved = [...proposed].flatMap<UnreadableRowProof>(([rowId, after]) => {
     const before = opening.get(rowId), birth = newBirths.get(rowId);
     if (!(target.policy.acceptsRowId ?? boundedRowId)(rowId) || Object.hasOwn(readable, rowId)
       || before === undefined || after === undefined || birth === undefined || oldBirths.get(rowId) !== birth) return [];
@@ -165,6 +166,9 @@ export function unreadableRowProofs(checkpoint: Pick<SessionCheckpoint, 'confirm
       && equalValues(scopeAt(earlier?.[rowField.field], rowId, target), scopeAt(draft[rowField.field], rowId, target));
     return returnedToOpening ? [{ ...address, returnedToOpening: true }] : [];
   });
+  if (target.stamp !== 'thought-lock' || !unresolved.some(address => address.returnedToOpening)
+    || matchesThoughtLockDraft(confirmed.value, draft, unresolved.map(address => address.rowId))) return unresolved;
+  return unresolved.filter(address => !address.returnedToOpening);
 }
 
 /** A row choice reads and replaces one field only while the original row still exists. */

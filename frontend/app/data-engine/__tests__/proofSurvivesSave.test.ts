@@ -20,6 +20,7 @@ import { diffFields } from '../protocol';
 import { commitRowKey } from '../retention.client';
 import { readSermonConflict } from '../rowConflictDetails';
 import { DataEngineRuntime } from '../runtime';
+import { recoveredThoughtLock } from '../sermonThoughtLockRecovery';
 import { processCommand, readDocument } from '../server';
 import { DataSession } from '../session';
 import { THOUGHT_LOCK_POLICY } from '../thoughtLockAction';
@@ -351,6 +352,148 @@ it.each(['older client', 'current client without time', 'current client with ear
       expect(result).toMatchObject({ kind: 'conflict', conflicts: [{ path: ['thoughts', 'id:a', 'text'] }] });
     }
     expect((await readDocument('owner', resource)).value).toMatchObject(opening);
+  });
+
+it.each([
+  'unlock', 'keep locked', 'already unlocked', 'legacy unlocked', 'replacement thought',
+  'batch unlock', 'batch partly matches', 'batch includes a replacement',
+  'types neighboring words while waiting', 'locks a neighboring thought while waiting',
+  'keeps own competing neighboring words', 'takes stored competing neighboring words', 'keeps an independent lock while taking stored competing words',
+] as const)(
+  'recovers an unreadable return to an unlocked thought (%s)', async choice => {
+    const world = installWorldFirestore(() => T + 1000);
+    const resource = { collection: 'sermons', id: 'thought-lock-undo' };
+    const batch = choice.startsWith('batch');
+    const thought = { id: 'a', date: 'born', text: 'Independent thought', tags: [],
+      ...(choice !== 'legacy unlocked' && { isLocked: false }) };
+    const neighbor = { ...thought, id: 'b', text: 'Neighbor thought' };
+    const original = { userId: 'owner', title: 'Sermon', verse: 'John 1:1', date: '2026-11-27', thoughts: [thought, neighbor] };
+    const metadata = { protocol: 1 as const, generation: 'g', revision: 1, deleted: false };
+    const opening: ResourceSnapshot = { resource, value: original, metadata };
+    world.documents.set('sermons/' + resource.id, { ...original, _dataEngine: metadata });
+    const editor = new DataSession(opening);
+    const locked = { ...original, thoughts: [{ ...thought, isLocked: true }, batch ? { ...neighbor, isLocked: true } : neighbor] };
+    const stamp = { field: 'thought-lock' as const, rowIds: batch ? [thought.id, neighbor.id] : [thought.id], time: null };
+    editor.edit(locked, undefined, stamp);
+    const first = editor.checkpoint();
+    const actions = Object.values(first.thoughtLockDrafts!).map(proof => proof.action);
+    editor.registerCommit('lock-first', first.editGeneration, locked, undefined, { thoughtLockActions: actions });
+    editor.edit({ ...original, thoughts: [{ ...thought, isLocked: false }, neighbor] }, undefined, stamp);
+    const checkpoint = editor.checkpoint();
+    expect(checkpoint.thoughtLockDrafts?.a.action).toMatchObject({ before: true, after: false });
+    for (const proof of Object.values(checkpoint.thoughtLockDrafts!)) loose(proof.action).observedRevision = 'invalid';
+    const request: CommitRequest = { id: 'lock-first', owner: 'owner', editorId: 'old-editor', editGeneration: first.editGeneration,
+      baseline: opening, working: opening, value: locked, intended: locked, predecessor: null, revision: 0, initialized: false,
+      command: null, submitted: null, sequence: 0, state: 'queued', result: null, unfinalized: [], thoughtLockActions: actions };
+    const record = { owner: 'owner', editorId: 'old-editor', checkpoint, prepared: null, unfinalized: [] };
+    let reopened = DataSession.restore((await throughDeviceStorage(record, request)).checkpoint);
+    takeDroppedProof('thoughtLockDrafts');
+    expect(reopened.checkpoint().conflicts).toEqual([]);
+    if (choice === 'already unlocked' || choice === 'legacy unlocked') {
+      reopened.applyCommit({ ...request, state: 'cancelled' });
+      reopened.observe(opening, { source: 'cache' });
+      expect(reopened.checkpoint().unreadableRowProofs).toHaveLength(1);
+      expect(reopened.checkpoint().conflicts).toEqual([]);
+      const savedLocally = await throughDeviceStorage({ ...record, checkpoint: reopened.checkpoint() });
+      const reload = DataSession.restore(savedLocally.checkpoint);
+      reload.observe(opening, { source: 'server' });
+      expect(reload.checkpoint()).toMatchObject({ dirty: false, conflicts: [] });
+      expect(reload.checkpoint().unreadableRowProofs).toBeUndefined();
+      expect((await save(reload.checkpoint())).commands).toEqual([]);
+      return;
+    }
+    const competing = choice.includes('competing');
+    const writesDuringWait = competing || choice === 'types neighboring words while waiting';
+    const locksDuringWait = choice === 'locks a neighboring thought while waiting' || choice.startsWith('keeps an independent lock');
+    const editsDuringWait = writesDuringWait || locksDuringWait;
+    const time = { earliestMs: T + 200, latestMs: T + 250 };
+    const neighboringLockTime = { earliestMs: T + 300, latestMs: T + 310 };
+    const words = writesDuringWait ? { ...neighbor, text: 'New local words in the neighboring thought' } : neighbor;
+    const editedNeighbor = locksDuringWait ? { ...words, isLocked: true } : words;
+    if (editsDuringWait) {
+      reopened.applyCommit({ ...request, state: 'cancelled' });
+      if (writesDuringWait) reopened.edit({ ...original, thoughts: [thought, words] }, undefined, {
+        field: 'thought-text', rowId: neighbor.id, time,
+      });
+      if (locksDuringWait) reopened.edit({ ...original, thoughts: [thought, editedNeighbor] }, undefined, {
+        field: 'thought-lock', rowId: neighbor.id, time: neighboringLockTime,
+      });
+      reopened = DataSession.restore((await throughDeviceStorage({ ...record, checkpoint: reopened.checkpoint() })).checkpoint);
+      const restored = reopened.checkpoint();
+      if (writesDuringWait) expect(restored.thoughtTextDrafts?.b?.action.time).toEqual(time);
+      if (locksDuringWait) expect(restored.thoughtLockDrafts?.b?.action.time).toEqual(neighboringLockTime);
+    }
+    const receipt = await processCommand('owner', {
+      protocol: 1, operationId: 'lock-first', owner: 'owner', resource, generation: 'g', dependsOn: [], kind: 'update',
+      changes: diffFields(original, locked), thoughtLockActions: actions,
+    });
+    if (receipt.kind !== 'acknowledged') throw new Error('The lock was not saved');
+    if (editsDuringWait) reopened.observe(receipt.snapshot, { source: 'server' });
+    else reopened.accept(receipt);
+    const restored = reopened.checkpoint();
+    expect(restored.remoteCandidate).not.toBeNull();
+    expect(recoveredThoughtLock(restored, restored.remoteCandidate!)).toMatchObject({ settled: false });
+    expect(await save(restored)).toEqual({ code: 'resolve-version-first', commands: [] });
+    const saved = (await readDocument('owner', resource)).value;
+    expect(saved?.thoughts).toEqual(locked.thoughts);
+    if (choice === 'replacement thought') {
+      const replacement = { ...thought, date: 'replacement', text: 'Replacement text', isLocked: true };
+      reopened.observe({ resource, value: { ...saved, thoughts: [replacement, neighbor] },
+        metadata: { ...metadata, revision: 3, operationId: 'replacement' } }, { source: 'server' });
+      expect(reopened.checkpoint()).toMatchObject({ dirty: false, conflicts: [], draft: { thoughts: [replacement, neighbor] } });
+      expect(reopened.checkpoint().unreadableRowProofs).toBeUndefined();
+      return;
+    }
+    const firstSettled = choice === 'batch partly matches' || choice === 'batch includes a replacement';
+    let displayed = stamp.rowIds;
+    let lastRevision = 2;
+    let currentFirst = thought;
+    const storedNeighbor = competing ? { ...neighbor, text: 'Newer saved words in the neighboring thought' } : neighbor;
+    if (competing) {
+      const target = { resource, value: { ...saved, thoughts: [locked.thoughts[0], storedNeighbor] },
+        metadata: { ...metadata, revision: 3, operationId: 'stored-neighbor' } };
+      world.documents.set('sermons/' + resource.id, { ...target.value, _dataEngine: target.metadata });
+      reopened.observe(target, { source: 'server' });
+      lastRevision = 3;
+    }
+    if (firstSettled) {
+      currentFirst = choice === 'batch includes a replacement'
+        ? { ...thought, date: 'new row', text: 'Replacement first thought', isLocked: true } : thought;
+      const target = { resource, value: { ...saved, thoughts: [currentFirst, { ...neighbor, isLocked: true }] },
+        metadata: { ...metadata, revision: 3, operationId: 'other-device' } };
+      world.documents.set('sermons/' + resource.id, { ...target.value, _dataEngine: target.metadata });
+      reopened.observe(target, { source: 'server' });
+      const current = reopened.checkpoint();
+      expect(recoveredThoughtLock(current, current.remoteCandidate!)).toMatchObject({ choices: [{ rowId: neighbor.id }], settled: false });
+      displayed = [neighbor.id];
+      lastRevision = 3;
+    }
+    const lockChoiceTime = { earliestMs: T + 500, latestMs: T + 510 };
+    expect(reopened.choosePrivateFields(choice === 'keep locked' ? 'remote' : 'local', lockChoiceTime)).toBe(true);
+    const useStored = competing && !choice.startsWith('keeps own');
+    if (competing) {
+      expect(reopened.checkpoint().conflicts).toEqual([expect.objectContaining({ path: ['thoughts', 'id:b', 'text'] })]);
+      expect(await save(reopened.checkpoint())).toEqual({ code: 'resolve-version-first', commands: [] });
+      if (useStored) reopened.acceptRemote(reopened.checkpoint().draft);
+      else reopened.keepLocal(undefined, { earliestMs: T + 700, latestMs: T + 710 });
+    }
+    const outcome = await save(reopened.checkpoint());
+    if (choice !== 'keep locked') {
+      expect(outcome.kind).toBe('acknowledged');
+      expect(outcome.commands).toHaveLength(1);
+      const reviewed = displayed.map(rowId => ({ rowId, before: true, after: false, observedRevision: lastRevision, time: lockChoiceTime }));
+      const actions = locksDuringWait ? [...reviewed, { rowId: neighbor.id, before: false, after: true, observedRevision: 1, time: neighboringLockTime }] : reviewed;
+      expect(outcome.commands[0]).toMatchObject({ thoughtLockActions: expect.arrayContaining(actions.map(action => expect.objectContaining(action))) });
+      expect(outcome.commands[0].thoughtLockActions).toHaveLength(actions.length);
+    } else expect(outcome.commands).toEqual([]);
+    const thoughts = (await readDocument('owner', resource)).value?.thoughts as typeof original.thoughts;
+    expect(Boolean(thoughts[0].isLocked)).toBe(choice === 'keep locked' || choice === 'batch includes a replacement');
+    expect(thoughts[0].text).toBe(currentFirst.text);
+    expect(thoughts[0].date).toBe(currentFirst.date);
+    expect(thoughts[1]).toEqual(useStored ? { ...storedNeighbor, isLocked: locksDuringWait } : editedNeighbor);
+    if (writesDuringWait && !competing) expect(outcome.commands[0]).toMatchObject({ thoughtTextActions: [
+      { rowId: neighbor.id, observedRevision: 1, time: { earliestMs: T + 200, latestMs: T + 250 } },
+    ] });
   });
 
 it.each(['opening words', 'missing summary'] as const)('holds a delayed council summary after an intentional return to %s', async mode => {

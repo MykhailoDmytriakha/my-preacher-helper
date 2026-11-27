@@ -3,7 +3,9 @@ import { isSermonTextRecoveryField, sermonTextRecoveryPath } from '@/utils/sermo
 
 import { ACCOUNT_PREFERENCE_TARGETS } from './accountPreference';
 
+import type { UnreadableRowProof } from './rowFieldAutosave';
 import type { SessionCheckpoint } from './session';
+import type { ResourceSnapshot } from './types';
 
 /** Comparison reasons for a private draft whose stored observation could not be read. */
 export const UNREADABLE_SCALAR_PROOF = 'unreadable-scalar-proof';
@@ -14,6 +16,12 @@ export const UNREADABLE_OUTLINE_POINT_POSITION = 'unreadable-outline-point-posit
 export function hasUnreadableDraftProof(checkpoint: SessionCheckpoint): boolean {
   return Boolean(checkpoint.unreadableScalarProof?.length || checkpoint.unreadableRowProofs?.length || checkpoint.unreadableExegeticalProofs?.length
     || checkpoint.unreadableServiceOrderStepPlacement || checkpoint.unreadableOutlinePointPlacement || checkpoint.privateFieldReview?.groupCopySources?.length);
+}
+
+/** A recovered return to the opening needs the saved version admitted by the server. */
+export function awaitsRowReturnVersion(address: UnreadableRowProof, snapshot: ResourceSnapshot): boolean {
+  return address.returnedToOpening === true && (address.verifiedRevision === undefined
+    || address.verifiedRevision !== snapshot.metadata?.revision || address.generation !== snapshot.metadata.generation);
 }
 
 /** Preference proof names use the same nested paths as their saved values. */

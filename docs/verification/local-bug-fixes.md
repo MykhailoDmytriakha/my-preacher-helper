@@ -11131,3 +11131,17 @@ Headless Chrome used local Auth and Firestore at 390 and 1280 px. Selecting priv
 After an authorized release, use a disposable group and a dedicated profile. Save a block rename, then restore the prior name before that request finishes. Reopen a fixture with the second revision unreadable and a different saved name. Confirm both versions are offered before any save, choose them in separate test copies, and verify the neighboring block and meeting flow after reload.
 
 Local case evidence: `artifacts/group-row-return-20261127/`.
+
+## BUG-20261113-unreadable-proof-does-not-ask · Recover an unlock entered before an older lock saved
+
+On Sermons → a sermon → Preparation → Saved draft, Chrome on `fd7041bf8` restored an unlock with an unreadable revision and sent one ordinary update before the person could choose. The earlier request had already locked the original thought. A second device had independently written more recent words into the same thought.
+
+The recovered return stays scoped to the exact thought birth and saved revision. The existing lock comparison now can list all differing thoughts from a group action. Matching or replaced rows remain untouched. Later independently authored words and locks stay in the draft with their original evidence. If the words themselves have a conflict, the lock decision stays durable while the next choice resolves the words. The final update carries the selected lock evidence and any surviving independent edits.
+
+Thirteen regression cases reproduce the original issue and the cases found during independent review. The six focused suites passed 602 tests. TypeScript and the isolated production build passed, and scoped ESLint reported zero errors. Seven headless Chrome scenarios on loopback Auth and Firestore exercised both lock choices, a batch, a partial match, both choices about competing words, and a separate lock retained when accepting the saved words. A user choosing the saved lock sent zero writes. A user retaining their unlock sent one exact update, after both clicks in the two-decision scenarios. Reload preserved the selected values, unrelated words, and thought location. Peak sampled Next.js memory was 396 MiB. All seven local ports were released.
+
+The second decision in Preparation used the standard text-conflict notice, which does not show the stored words next to the user's text. That presentation is recorded separately in BUGS.md. The placement case remains in the original investigation.
+
+After an authorized release, use a disposable sermon and dedicated profile. Prepare a locked thought, restore an unreadable return to unlocked, and confirm the saved lock and current words are shown before any write. Repeat with a multi-selection and a member already unlocked by the server. Verify that the final command applies only the chosen unresolved locks, with the neighboring text and order intact after reload.
+
+Local case evidence: `artifacts/sermon-thought-lock-return-20261127/`.

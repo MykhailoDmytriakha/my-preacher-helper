@@ -29,9 +29,10 @@ export function sermonConflictComparison(checkpoint: SessionCheckpoint, t: TFunc
     ? recoveredThoughtLock(checkpoint, checkpoint.remoteCandidate) : undefined;
   if (lock?.settled === false) {
     const label = (checked: boolean) => t(checked ? 'structure.locked' : 'structure.unlocked');
-    return { identity: JSON.stringify([checkpoint.editGeneration, checkpoint.remoteCandidate?.metadata?.revision, lock.rowId, lock.text]),
+    return { identity: JSON.stringify([checkpoint.editGeneration, checkpoint.remoteCandidate?.metadata?.revision, lock.choices]),
       title: t('structure.thoughtLockState'), valueKind: 'field', scopedChoice: true,
-      mine: lock.text + ' · ' + label(lock.checked), stored: lock.text + ' · ' + label(lock.stored) };
+      mine: lock.choices.map(({ text, checked }) => text + ' · ' + label(checked)).join('\n'),
+      stored: lock.choices.map(({ text, stored }) => text + ' · ' + label(stored)).join('\n') };
   }
   const pendingRemoval = pendingThoughtRemoval(checkpoint);
   const privateRemoval = checkpoint.remoteCandidate && !Object.keys(checkpoint.pending).length

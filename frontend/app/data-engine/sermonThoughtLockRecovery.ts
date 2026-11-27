@@ -1,8 +1,10 @@
 import { isActionTime } from './actionClock';
-import { equalValues, object } from './fieldValues';
+import { equalValues, object, readField, writeField } from './fieldValues';
+import { mergeDocumentFields } from './protocol';
 import { existingRowField, existingRowFields, replaceExistingRowField } from './rowFieldAction';
 import { sermonThoughtFrame } from './sermonThoughtRecoveryFrame';
 import { THOUGHT_LOCK_POLICY } from './thoughtLockAction';
+import { awaitsRowReturnVersion, hasUnreadableDraftProof } from './unreadableDraftProof';
 
 import type { CommitRequest } from './commits';
 import type { SessionCheckpoint } from './session';
@@ -69,29 +71,93 @@ export function unresolvedThoughtLock(checkpoint: SessionCheckpoint): boolean {
     && checkpoint.unreadableRowProofs?.some(address => address.field === 'thoughtLockDrafts') === true;
 }
 
+function copyThoughtLockFields(value: DocumentData, source: DocumentData, rowIds: readonly string[]): DocumentData {
+  if (!Array.isArray(value.thoughts) || !Array.isArray(source.thoughts)) return value;
+  const affected = new Set(rowIds);
+  const locks = new Map(source.thoughts.flatMap(row => object(row) && typeof row.id === 'string' && affected.has(row.id)
+    ? [[row.id, readField(row, ['isLocked'])] as const] : []));
+  const thoughts = value.thoughts.map(row => {
+    const lock = object(row) && typeof row.id === 'string' ? locks.get(row.id) : undefined;
+    return lock && object(row) ? writeField(row, ['isLocked'], lock) : row;
+  });
+  return { ...value, thoughts };
+}
+
+/** Replaying the declared locks from the draft must account for every local change. */
+export function matchesThoughtLockDraft(opening: DocumentData, draft: DocumentData, rowIds: readonly string[]): boolean {
+  return equalValues(copyThoughtLockFields(opening, draft, rowIds), draft);
+}
+
+export function hasReviewedThoughtLocks(checkpoint: SessionCheckpoint): boolean {
+  return Object.values(checkpoint.thoughtLockDrafts ?? {}).some(proof => proof.reviewed);
+}
+
+export function canSaveReviewedThoughtLocks(checkpoint: SessionCheckpoint): boolean {
+  return !checkpoint.conflicts.length && !hasUnreadableDraftProof(checkpoint) && hasReviewedThoughtLocks(checkpoint);
+}
+
+/** The next choice drops only its own conflicting words, without taking a prior lock decision with them. */
+export function openingKeepingReviewedThoughtLocks(checkpoint: SessionCheckpoint, shown: DocumentData): DocumentData | undefined {
+  const { confirmed, remoteCandidate, conflicts } = checkpoint;
+  if (!confirmed.value || !remoteCandidate?.value || !conflicts.length
+    || confirmed.metadata?.generation !== remoteCandidate.metadata?.generation) return;
+  const opening = confirmed.value, saved = remoteCandidate.value;
+  const keep = Object.values(checkpoint.thoughtLockDrafts ?? {}).flatMap(({ generation, action }) => {
+    const { rowId, rowCreatedAt, after } = action;
+    const path = ['thoughts', 'id:' + rowId, 'isLocked'];
+    if (generation !== confirmed.metadata?.generation || lockAt(shown, rowId) !== after
+      || bornAt(opening, rowId) !== rowCreatedAt || bornAt(saved, rowId) !== rowCreatedAt || bornAt(shown, rowId) !== rowCreatedAt
+      || conflicts.some(conflict => conflict.path.every((part, index) => part === path[index]))) return [];
+    return [rowId];
+  });
+  return keep.length ? copyThoughtLockFields(shown, opening, keep) : undefined;
+}
+
+type RecoveredLockChoice = { rowId: string; checked: boolean; stored: boolean; text: string };
+
 export function recoveredThoughtLock(checkpoint: SessionCheckpoint, saved: ResourceSnapshot) {
-  const [address, other] = checkpoint.unreadableRowProofs ?? [];
+  const addresses = checkpoint.unreadableRowProofs ?? [];
   const { confirmed, draft } = checkpoint;
-  if (other || address?.field !== 'thoughtLockDrafts' || !unresolvedThoughtLock(checkpoint) || !confirmed.value || !draft || !saved.value
-    || checkpoint.unreadableScalarProof?.length || checkpoint.unreadableExegeticalProofs?.length
-    || confirmed.metadata?.generation !== address.generation || saved.metadata?.deleted) return;
-  const { rowId, birth } = address;
-  const checked = lockAt(draft, rowId);
-  if (checked === undefined || bornAt(confirmed.value, rowId) !== birth || bornAt(draft, rowId) !== birth
-    || !equalValues(projectThoughtLock(confirmed.value, rowId, checked), draft)) return;
-  const before = { rowId, checked };
-  if (saved.metadata?.generation !== address.generation) return { ...before, settled: true as const };
+  const generation = confirmed.metadata?.generation;
+  if (confirmed.resource.collection !== 'sermons' || !generation || !confirmed.value || !draft || !saved.value
+    || !addresses.length || checkpoint.unreadableScalarProof?.length || checkpoint.unreadableExegeticalProofs?.length
+    || saved.metadata?.deleted || addresses.some(address => address.field !== 'thoughtLockDrafts' || address.generation !== generation
+      || awaitsRowReturnVersion(address, saved))) return;
+  const rowIds = addresses.map(address => address.rowId);
+  if (new Set(rowIds).size !== rowIds.length) return;
+  // Older isolated copies require an exact projection. A restored return can also have later local edits.
+  if (!addresses.some(address => address.returnedToOpening) && !matchesThoughtLockDraft(confirmed.value, draft, rowIds)) return;
+  const openingBirths = existingRowFields(confirmed.value.thoughts, birth);
+  const draftBirths = existingRowFields(draft.thoughts, birth);
+  const locks = existingRowFields(draft.thoughts, target);
+  if (addresses.some(({ rowId, birth: date }) => openingBirths.get(rowId) !== date || draftBirths.get(rowId) !== date
+    || locks.get(rowId) === undefined)) return;
+  const paths = rowIds.map(rowId => ['thoughts', 'id:' + rowId, 'isLocked']);
+  if (saved.metadata?.generation !== generation) return { settled: true as const, storedDraft: saved.value, paths, conflicts: [] };
   if (!Array.isArray(saved.value.thoughts)) return;
-  const rows = saved.value.thoughts.filter(row => object(row) && row.id === rowId);
-  const [row, duplicate] = rows;
-  if (duplicate) return;
-  if (!row) return { ...before, settled: true as const };
-  if (!object(row) || typeof row.date !== 'string' || typeof row.text !== 'string') return;
-  if (row.date !== birth) return { ...before, settled: true as const };
-  const stored = lockAt(saved.value, rowId);
-  if (stored === undefined) return;
-  if (stored === checked) return { ...before, settled: true as const };
-  return { ...before, stored, settled: false as const, text: row.text, proposed: projectThoughtLock(saved.value, rowId, checked) };
+  const rows = new Map<string, DocumentData | null>();
+  for (const row of saved.value.thoughts) {
+    if (object(row) && typeof row.id === 'string') rows.set(row.id, rows.has(row.id) ? null : row);
+  }
+  const savedLocks = existingRowFields(saved.value.thoughts, target);
+  const choices: RecoveredLockChoice[] = [];
+  for (const { rowId, birth: date } of addresses) {
+    const row = rows.get(rowId);
+    if (row === null || (row && (typeof row.date !== 'string' || typeof row.text !== 'string'))) return;
+    if (!row || row.date !== date) continue;
+    const checked = locks.get(rowId), stored = savedLocks.get(rowId);
+    if (checked === undefined || stored === undefined) return;
+    if (checked !== stored) choices.push({ rowId, checked, stored, text: row.text as string });
+  }
+  // The lock choice owns only its fields. Merge any later edits with the current saved sermon.
+  const neutral = copyThoughtLockFields(draft, confirmed.value, rowIds);
+  const merged = mergeDocumentFields(confirmed.value, neutral, saved.value);
+  if (!merged.value.exists || !object(merged.value.value)) return;
+  const storedDraft = merged.value.value;
+  const common = { storedDraft, paths, conflicts: merged.conflicts };
+  if (!choices.length) return { ...common, settled: true as const };
+  const proposed = choices.reduce((value, { rowId, checked }) => projectThoughtLock(value, rowId, checked), storedDraft);
+  return { ...common, choices, proposed, settled: false as const };
 }
 
 export function reviewUnavailableThoughtLock(checkpoint: SessionCheckpoint, saved: ResourceSnapshot): SessionCheckpoint {

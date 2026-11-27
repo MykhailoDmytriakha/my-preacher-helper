@@ -49,7 +49,7 @@ import { hasPrivateSermonPointMove, readRootPointOrder, retainedRootOrderChanged
 import { capturePreparationCheckRetry, changedPreparationChecks, privatePreparationCheck, validPreparationCheckRetry, type PreparationCheckRetry } from './sermonPreparationCheckRecovery';
 import { capturedScratchRemovalPath, projectRecoveredScratchRemoval, recoveredScratchRemoval, unresolvedScratchRemoval } from './sermonScratchRemovalRecovery';
 import { observedSermonText } from './sermonTextRecovery';
-import { recoveredThoughtLock, unresolvedThoughtLock } from './sermonThoughtLockRecovery';
+import { hasReviewedThoughtLocks, openingKeepingReviewedThoughtLocks, recoveredThoughtLock, unresolvedThoughtLock } from './sermonThoughtLockRecovery';
 import { recoveredThoughtPlacement, unresolvedThoughtPlacement } from './sermonThoughtPlacementRecovery';
 import { recoveredThoughtRemoval, unresolvedThoughtRemoval } from './sermonThoughtRemovalRecovery';
 import { acknowledgeServiceOrderInput, projectServiceOrderInput, readServiceOrderInputValue, requireServiceOrderInputComparison, retainRemovedServiceOrderInputs, retainServiceOrderInputs, serviceOrderInputKey, stageServiceOrderInput, ServiceOrderInputDecisionError, type ServiceOrderInput, type ServiceOrderInputComparison } from './serviceOrderInput';
@@ -61,7 +61,7 @@ import { assertLegacyCommentLocalChoice, projectLegacyStudyComment, projectLegac
 import { chooseStudyNoteReferences } from './studyNoteReferenceChoice';
 import { readStudyNoteReturnComparison, studyNoteBodyAfterStoredChoice } from './studyNoteTypeChoice';
 import { localThoughtPlacementChoices } from './thoughtPlacementAction';
-import { UNREADABLE_OUTLINE_POINT_POSITION, UNREADABLE_ROW_PROOF, UNREADABLE_SCALAR_PROOF, UNREADABLE_STEP_POSITION, hasTwoPrivateServiceOrderMoves, hasUnreadableDraftProof, hasUnreadablePreparationCheck, hasUnreadableSermonChurch, privateServiceOrderPosition, unreadableScalarPath, waitsForServiceOrderPosition } from './unreadableDraftProof';
+import { UNREADABLE_OUTLINE_POINT_POSITION, UNREADABLE_ROW_PROOF, UNREADABLE_SCALAR_PROOF, UNREADABLE_STEP_POSITION, awaitsRowReturnVersion, hasTwoPrivateServiceOrderMoves, hasUnreadableDraftProof, hasUnreadablePreparationCheck, hasUnreadableSermonChurch, privateServiceOrderPosition, unreadableScalarPath, waitsForServiceOrderPosition } from './unreadableDraftProof';
 
 import type { AccountPreferenceField, AccountPreferenceResolution, AccountPreferenceRetry } from './accountPreference';
 import type { ActionTime } from './actionClock';
@@ -191,9 +191,7 @@ export class DataSession {
   }
 
   private waitsForReturnedRowVersion(snapshot: ResourceSnapshot): boolean {
-    return Boolean(this.state.unreadableRowProofs?.some(address => address.returnedToOpening
-      && (address.verifiedRevision === undefined || address.verifiedRevision !== snapshot.metadata?.revision
-        || address.generation !== snapshot.metadata.generation)));
+    return Boolean(this.state.unreadableRowProofs?.some(address => awaitsRowReturnVersion(address, snapshot)));
   }
 
   private refreshUnreadableComparisons(): void {
@@ -212,7 +210,12 @@ export class DataSession {
     const scratchRemoval = recoveredScratchRemoval(this.state, target);
     if (scratchRemoval?.settled && this.finishScratchRemoval(target, 'remote')) return;
     const removal = recoveredThoughtRemoval(this.state, target) ?? scratchRemoval;
-    if ((removal?.settled && !scratchRemoval) || recoveredThoughtLock(this.state, target)?.settled) {
+    const lock = recoveredThoughtLock(this.state, target);
+    if (lock?.settled) {
+      this.finishRecoveredThoughtLocks(target, lock, 'remote', null);
+      return;
+    }
+    if (removal?.settled && !scratchRemoval) {
       this.state.remoteCandidate = copy(target);
       this.finishChoiceAgainstRemote(target.value);
       delete this.state.unreadableRowProofs;
@@ -923,7 +926,8 @@ export class DataSession {
       const remaining = unreadableRowProofs!.flatMap(address => {
         if (!address.returnedToOpening || address.generation !== verified.generation) return [address];
         const choice = unreadableRowChoice(stored, address);
-        if (choice?.available && equalValues(choice.mine, choice.theirs)) {
+        // Keep the exact members of a lock gesture together until the specialized comparison settles.
+        if (address.field !== 'thoughtLockDrafts' && choice?.available && equalValues(choice.mine, choice.theirs)) {
           settled.push(choice.path);
           updatedRows = true;
           return [];
@@ -1119,6 +1123,35 @@ export class DataSession {
     return true;
   }
 
+  private finishRecoveredThoughtLocks(target: ResourceSnapshot, lock: NonNullable<ReturnType<typeof recoveredThoughtLock>>,
+    side: 'local' | 'remote', time: ActionTime | null): void {
+    const source = this.checkpoint();
+    const proposed = side === 'local' && !lock.settled ? lock.proposed : lock.storedDraft;
+    const next = DataSession.restore({ confirmed: target, draft: proposed,
+      editGeneration: source.editGeneration, dirty: true, pending: {}, conflicts: [], remoteCandidate: null });
+    if (side === 'local' && !lock.settled) {
+      const paths = lock.choices.map(({ rowId }) => ['thoughts', 'id:' + rowId, 'isLocked']);
+      stageReviewedRowFields(next.state, paths, time, ['thought-lock']);
+      if (lock.choices.some(({ rowId }) => !next.state.thoughtLockDrafts?.[rowId])) {
+        throw Object.assign(new Error('The thought lock could not be captured'), { code: 'decision-changed' });
+      }
+    }
+    this.state.remoteCandidate = copy(target);
+    this.finishChoiceAgainstRemote(next.state.draft);
+    delete this.state.unreadableRowProofs;
+    this.retainUnreviewedAutosaveActions(source, lock.paths.map(path => ({ path })));
+    const reviewed = next.state.thoughtLockDrafts;
+    if (reviewed) {
+      this.state.thoughtLockDrafts = { ...this.state.thoughtLockDrafts, ...Object.fromEntries(
+        Object.entries(reviewed).map(([id, proof]) => [id, { ...proof, reviewed: true as const }]),
+      ) };
+    }
+    if (lock.conflicts.length) {
+      this.state.remoteCandidate = copy(target);
+      this.state.conflicts = copy(lock.conflicts);
+    }
+  }
+
   choosePrivateFields(side: 'local' | 'remote', time: ActionTime | null): boolean {
     if (!Object.keys(this.state.pending).length && guardedScratchTextReview(this.state) && this.state.remoteCandidate) {
       const projected = projectGuardedScratchText(this.state, this.state.remoteCandidate, side);
@@ -1139,17 +1172,7 @@ export class DataSession {
       if (!target || lock?.settled !== false) {
         throw Object.assign(new Error('The compared thought lock has changed'), { code: 'decision-changed' });
       }
-      const proposed = DataSession.restore({ confirmed: target, draft: side === 'local' ? lock.proposed : target.value,
-        editGeneration: this.state.editGeneration, dirty: side === 'local', pending: {}, conflicts: [], remoteCandidate: null });
-      if (side === 'local') {
-        stageReviewedRowFields(proposed.state, [['thoughts', 'id:' + lock.rowId, 'isLocked']], time, ['thought-lock']);
-        if (!proposed.state.thoughtLockDrafts?.[lock.rowId]) {
-          throw Object.assign(new Error('The thought lock could not be captured'), { code: 'decision-changed' });
-        }
-      }
-      this.finishChoiceAgainstRemote(proposed.state.draft);
-      delete this.state.unreadableRowProofs;
-      this.state.thoughtLockDrafts = proposed.state.thoughtLockDrafts;
+      this.finishRecoveredThoughtLocks(target, lock, side, time);
       return true;
     }
     if (unresolvedThoughtRemoval(this.state) && !Object.keys(this.state.pending).length) {
@@ -1398,11 +1421,14 @@ export class DataSession {
       this.refreshUnreadableComparisons();
       return;
     }
+    const source = atChoice && hasReviewedThoughtLocks(this.state) ? this.checkpoint() : undefined;
+    const independentLocks = source && atChoice ? openingKeepingReviewedThoughtLocks(source, atChoice) : undefined;
     this.state.confirmed = copy(this.state.remoteCandidate);
     this.state.remoteCandidate = null;
     if (atChoice !== undefined) {
       // The choice replaces the shown draft, while later typing remains a new local action.
-      this.dropRefused(atChoice);
+      this.dropRefused(independentLocks ?? atChoice);
+      if (source && independentLocks) this.retainUnreviewedAutosaveActions(source);
       this.refreshUnreadableComparisons();
       return;
     }
@@ -1487,7 +1513,8 @@ export class DataSession {
     });
     const independentPointProofs = pointChoices.length ? this.state.exegeticalPointDrafts : undefined;
     const carryFieldProofs = candidate && (['groups', 'councils'].includes(candidate.resource.collection)
-      || (reviewingUnreadableProof && candidate.resource.collection === 'studyNotes')) ? this.checkpoint() : undefined;
+      || (reviewingUnreadableProof && candidate.resource.collection === 'studyNotes')
+      || hasReviewedThoughtLocks(this.state)) ? this.checkpoint() : undefined;
     if (candidate?.value === null || candidate?.metadata?.deleted || this.state.confirmed.metadata?.deleted) {
       throw Object.assign(new Error('Remote document was deleted; use a new copy to preserve this draft'), { code: 'use-new-copy' });
     }
