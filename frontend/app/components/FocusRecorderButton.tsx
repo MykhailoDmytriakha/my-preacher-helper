@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, type MouseEventHandler } from "react";
 
 import "@locales/i18n";
 import { MicrophoneIcon } from "@/components/Icons";
@@ -37,6 +37,8 @@ interface FocusRecorderButtonProps {
   onClearError?: () => void;
   onDiscardRecording?: () => void | Promise<void>;
   onRecordingStateChange?: (active: boolean) => void;
+  /** A recording control can be pressed while a nearby text editor keeps its caret. */
+  preserveFocusOnPress?: () => boolean;
 }
 
 type ButtonState = 'processing' | 'initializing' | 'paused' | 'recording' | 'idle';
@@ -211,6 +213,7 @@ const PauseResumeButton = ({
   onPause,
   onResume,
   sizeConfig,
+  onMouseDown,
   t,
 }: {
   buttonState: ButtonState;
@@ -218,6 +221,7 @@ const PauseResumeButton = ({
   onPause: () => void;
   onResume: () => void;
   sizeConfig: SizeConfig;
+  onMouseDown: MouseEventHandler<HTMLButtonElement>;
   t: TranslateFn;
 }) => {
   if (buttonState !== 'recording' && buttonState !== 'paused') {
@@ -232,6 +236,7 @@ const PauseResumeButton = ({
   return (
     <button
       type="button"
+      onMouseDown={onMouseDown}
       onClick={(e) => {
         e.stopPropagation();
         if (isPaused) {
@@ -273,11 +278,13 @@ const CancelButton = ({
   buttonState,
   onCancel,
   sizeConfig,
+  onMouseDown,
   t,
 }: {
   buttonState: ButtonState;
   onCancel: () => void;
   sizeConfig: SizeConfig;
+  onMouseDown: MouseEventHandler<HTMLButtonElement>;
   t: TranslateFn;
 }) => {
   if (buttonState !== 'recording' && buttonState !== 'paused' && buttonState !== 'initializing') {
@@ -287,6 +294,7 @@ const CancelButton = ({
   return (
     <button
       type="button"
+      onMouseDown={onMouseDown}
       onClick={(e) => {
         e.stopPropagation();
         console.log('FocusRecorderButton: Cancel button (X) clicked');
@@ -327,6 +335,7 @@ export const FocusRecorderButton = ({
   onClearError,
   onDiscardRecording,
   onRecordingStateChange,
+  preserveFocusOnPress,
 }: FocusRecorderButtonProps) => {
   const { isActive: isSessionActive, begin, owns, finish } = useRecordingSession(onRecordingStateChange);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -725,6 +734,11 @@ export const FocusRecorderButton = ({
     ? 'absolute right-0 top-full z-50 mt-2 w-[320px] max-w-[calc(100vw-2rem)]'
     : 'absolute left-1/2 top-full z-50 mt-3 w-[340px] max-w-[calc(100vw-2rem)] -translate-x-1/2';
 
+  const handleControlMouseDown: MouseEventHandler<HTMLButtonElement> = event => {
+    // The browser moves focus before click. A start or stop can then disable the focused button.
+    if (event.button === 0 && preserveFocusOnPress?.()) event.preventDefault();
+  };
+
   const handleMainButtonClick = useCallback(() => {
     console.log('FocusRecorderButton: Main button clicked', { isRecording, isPaused, isProcessing, isInitializing });
     if (isRecording) {
@@ -748,6 +762,7 @@ export const FocusRecorderButton = ({
       {/* Main circular button */}
       <button
         type="button"
+        onMouseDown={handleControlMouseDown}
         onClick={handleMainButtonClick}
         disabled={isButtonDisabled}
         className={`relative ${sizeConfig.buttonSize} rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${MAIN_BUTTON_STATE_STYLES[buttonState]
@@ -777,6 +792,7 @@ export const FocusRecorderButton = ({
         onPause={pauseRecording}
         onResume={resumeRecording}
         sizeConfig={sizeConfig}
+        onMouseDown={handleControlMouseDown}
         t={t}
       />
 
@@ -785,6 +801,7 @@ export const FocusRecorderButton = ({
         buttonState={buttonState}
         onCancel={cancelRecording}
         sizeConfig={sizeConfig}
+        onMouseDown={handleControlMouseDown}
         t={t}
       />
 

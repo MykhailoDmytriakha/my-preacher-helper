@@ -196,6 +196,28 @@ describe('FocusRecorderButton', () => {
   });
 
   describe('Recording Functionality', () => {
+    it('keeps an already focused text field during the primary recorder press when requested', async () => {
+      const preserveFocusOnPress = jest.fn(() => true);
+      render(<FocusRecorderButton onRecordingComplete={jest.fn()} preserveFocusOnPress={preserveFocusOnPress} />);
+
+      const start = screen.getByRole('button', { name: 'audio.newRecording' });
+      expect(fireEvent.mouseDown(start, { button: 0 })).toBe(false);
+      expect(fireEvent.mouseDown(start, { button: 2 })).toBe(true);
+      fireEvent.click(start);
+
+      await waitFor(() => expect(screen.getByRole('button', { name: 'audio.stopRecording' })).toBeEnabled());
+      const stop = screen.getByRole('button', { name: 'audio.stopRecording' });
+      expect(fireEvent.mouseDown(stop, { button: 0 })).toBe(false);
+      const pause = screen.getByRole('button', { name: 'audio.pauseRecording' });
+      expect(fireEvent.mouseDown(pause, { button: 0 })).toBe(false);
+      fireEvent.click(pause);
+      const resume = screen.getByRole('button', { name: 'audio.resumeRecording' });
+      expect(fireEvent.mouseDown(resume, { button: 0 })).toBe(false);
+      expect(fireEvent.mouseDown(screen.getByRole('button', { name: 'audio.cancelRecording' }), { button: 0 })).toBe(false);
+      preserveFocusOnPress.mockReturnValue(false);
+      expect(fireEvent.mouseDown(stop, { button: 0 })).toBe(true);
+    });
+
     it('should show initializing state while waiting for microphone permission', async () => {
       let resolveStream: ((stream: MediaStream) => void) | undefined;
       const pendingStream = new Promise<MediaStream>((resolve) => {

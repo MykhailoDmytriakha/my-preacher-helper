@@ -814,6 +814,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     const { isCopied, copyToClipboard } = useClipboard({ successDuration: 1500 });
 
     const [title, setTitleState, liveTitle] = useLiveState('');
+    const noteEditorRef = useRef<HTMLDivElement>(null);
     const { text: content, follow: setContent, replace: replaceContent, append: appendContent, ownedBy } = useEditorOwnedText('', (value, opening) => stageLiveBody.current(value, opening));
     const [dictationSourceIds, setDictationSourceIds, liveDictation] = useLiveState<string[]>([]);
     const [recordingSourceIds, setRecordingSourceIds] = useState<string[]>([]);
@@ -1550,7 +1551,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                 {renderRecoveryBanners()}
                 <div className="relative group">
                     {isEditing ? (
-                        <div className="text-lg md:text-xl leading-relaxed">
+                        <div ref={noteEditorRef} className="text-lg md:text-xl leading-relaxed">
                             <RichMarkdownEditor
                                 ownedBy={ownedBy}
                                 placeholder={t('studiesWorkspace.contentPlaceholder')}
@@ -1580,6 +1581,11 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                                     key={voiceController.recordingKey}
                                     onRecordingComplete={handleVoiceRecordingComplete}
                                     onRecordingStateChange={voiceController.setIsRecording}
+                                    preserveFocusOnPress={() => {
+                                        const focused = document.activeElement;
+                                        return focused instanceof HTMLElement && focused.isContentEditable
+                                            && noteEditorRef.current?.contains(focused) === true;
+                                    }}
                                     onDiscardRecording={voiceController.discard}
                                     isProcessing={isVoiceProcessing}
                                     disabled={dictationBlocked}
