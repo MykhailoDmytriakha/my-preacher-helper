@@ -6,6 +6,7 @@ import { ChevronDoubleLeftIcon, ChevronDoubleRightIcon, MicrophoneIcon, PencilIc
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
+import hoverActions from '@/components/ui/HoverActions.module.css';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useDndKitAccessibility } from '@/hooks/useDragAnnouncements';
 import { recordDiagnostic } from '@/utils/appDiagnostics';
@@ -111,7 +112,7 @@ type Sheet = { kind: 'move' | 'group'; ids: string[] } | null;
 interface LastMove { words: string; back: { ids: string[]; place: ScratchPlace }[] }
 
 /** With a mouse a title's buttons appear while its row is pointed at or focused by a key; touch screens keep them. */
-const HEAD_TOOL = 'transition-opacity duration-150 [@media(hover:hover)_and_(pointer:fine)]:opacity-0 group-hover/head:opacity-100 group-has-[:focus-visible]/head:opacity-100';
+
 
 /** A point's or sub-point's title in place: Enter or «Сохранить» keeps it, Escape or «Отмена» leaves it as it was. */
 function TitleEditor({ initial, label, onSave, onCancel, saveLabel, cancelLabel }: {
@@ -657,38 +658,35 @@ export default function ScratchSortingBoard({
                       <div className="mt-3 flex flex-col gap-2.5">
                         {part.points.map(({ point, notes: onPoint, subPoints }) => {
                           const total = onPoint.length + subPoints.reduce((sum, sub) => sum + sub.notes.length, 0);
-                          const removable = !isReadOnly;
                           return (
                             <DropZone key={point.id} id={placeKey({ section, pointId: point.id, subPointId: null })} ariaLabel={point.text}
                               className="rounded-xl border border-gray-200 bg-white p-2.5 dark:border-gray-700 dark:bg-gray-900" activeClass="ring-2 ring-violet-500 bg-violet-50/60 dark:bg-violet-950/30" readyClass="ring-1 ring-violet-200 dark:ring-violet-800" dragActive={Boolean(dragging)}>
-                              <div className="group/head flex items-center gap-1">
+                              <div className={`flex items-center gap-1 ${hoverActions.row}`}>
                                 <span aria-hidden="true" className={`ml-1 mr-1.5 h-2 w-2 shrink-0 rounded-full ${look.dot}`} />
                                 {isRenaming('point', point.id) ? titleEditor({ kind: 'point', id: point.id }, point.text) : (
                                   <>
                                     <span className="min-w-0 flex-1 text-[15px] font-semibold text-gray-900 dark:text-gray-100">{point.text}</span>
                                     {total > 0 && <span className="shrink-0 text-xs text-gray-500 dark:text-gray-400">{t(NOTE_COUNT_KEY, { count: total })}</span>}
                                     {!isReadOnly && (
-                                      <button type="button" onClick={() => setRenaming({ kind: 'point', id: point.id })}
-                                        aria-label={t('scratch.sort.renamePoint')} title={t('scratch.sort.renamePoint')}
-                                        className={`${HEAD_TOOL} inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-violet-700 md:h-8 md:w-8 dark:hover:bg-gray-800 dark:hover:text-violet-300`}>
-                                        <PencilSquareIcon className="h-4 w-4" aria-hidden="true" />
-                                      </button>
+                                      <div className={`flex shrink-0 items-center gap-1 transition-opacity duration-150 ${addingSub === point.id ? '' : hoverActions.actions}`}>
+                                        <button type="button" onClick={() => setRenaming({ kind: 'point', id: point.id })}
+                                          aria-label={t('scratch.sort.renamePoint')} title={t('scratch.sort.renamePoint')}
+                                          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-violet-700 md:h-8 md:w-8 dark:hover:bg-gray-800 dark:hover:text-violet-300">
+                                          <PencilSquareIcon className="h-4 w-4" aria-hidden="true" />
+                                        </button>
+                                        <button type="button" onClick={() => { setAddingSub(addingSub === point.id ? null : point.id); setSubDraft(''); }}
+                                          aria-label={t('scratch.sort.addSubPoint')} title={t('scratch.sort.addSubPoint')}
+                                          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 md:h-8 md:w-8 dark:hover:bg-gray-800">
+                                          <PlusIcon className="h-4 w-4" aria-hidden="true" />
+                                        </button>
+                                        <button type="button" onClick={() => { void removePoint(point.id, point.text); }}
+                                          aria-label={t('scratch.sort.removePoint')} title={t('scratch.sort.removePoint')}
+                                          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-red-600 md:h-8 md:w-8 dark:hover:bg-gray-800 dark:hover:text-red-400">
+                                          <TrashIcon className="h-4 w-4" aria-hidden="true" />
+                                        </button>
+                                      </div>
                                     )}
                                   </>
-                                )}
-                                {!isReadOnly && !isRenaming('point', point.id) && (
-                                  <button type="button" onClick={() => { setAddingSub(addingSub === point.id ? null : point.id); setSubDraft(''); }}
-                                    aria-label={t('scratch.sort.addSubPoint')} title={t('scratch.sort.addSubPoint')}
-                                    className={`${addingSub === point.id ? '' : HEAD_TOOL} inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 md:h-8 md:w-8 dark:hover:bg-gray-800`}>
-                                    <PlusIcon className="h-4 w-4" aria-hidden="true" />
-                                  </button>
-                                )}
-                                {removable && !isRenaming('point', point.id) && (
-                                  <button type="button" onClick={() => { void removePoint(point.id, point.text); }}
-                                    aria-label={t('scratch.sort.removePoint')} title={t('scratch.sort.removePoint')}
-                                    className={`${HEAD_TOOL} inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-red-600 md:h-8 md:w-8 dark:hover:bg-gray-800 dark:hover:text-red-400`}>
-                                    <TrashIcon className="h-4 w-4" aria-hidden="true" />
-                                  </button>
                                 )}
                               </div>
                               {(onPoint.length > 0 || subPoints.length > 0 || addingSub === point.id) && (
@@ -698,23 +696,23 @@ export default function ScratchSortingBoard({
                                     <DropZone key={subPoint.id} id={placeKey({ section, pointId: point.id, subPointId: subPoint.id })} ariaLabel={subPoint.text}
                                       className="flex flex-col gap-1.5 rounded-r-lg border-l-2 border-gray-200 py-1 pl-2.5 dark:border-gray-700" activeClass="border-violet-500 bg-violet-50 dark:bg-violet-950/30" dragActive={Boolean(dragging)}>
                                       {isRenaming('subpoint', subPoint.id) ? titleEditor({ kind: 'subpoint', id: subPoint.id }, subPoint.text) : (
-                                        <div className="group/head flex items-center gap-1">
+                                        <div className={`flex items-center gap-1 ${hoverActions.row}`}>
                                           <span className="min-w-0 flex-1 text-sm font-semibold text-gray-700 dark:text-gray-200">
                                             {subPoint.text}{onSub.length > 0 && <span className="ml-1.5 font-normal text-gray-400">{t(NOTE_COUNT_KEY, { count: onSub.length })}</span>}
                                           </span>
                                           {!isReadOnly && (
-                                            <button type="button" onClick={() => setRenaming({ kind: 'subpoint', id: subPoint.id })}
-                                              aria-label={t('scratch.sort.renameSubPoint')} title={t('scratch.sort.renameSubPoint')}
-                                              className={`${HEAD_TOOL} inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-violet-700 md:h-7 md:w-7 dark:hover:bg-gray-800 dark:hover:text-violet-300`}>
-                                              <PencilSquareIcon className="h-4 w-4" aria-hidden="true" />
-                                            </button>
-                                          )}
-                                          {!isReadOnly && (
-                                            <button type="button" onClick={() => { void removeSubPoint(subPoint.id, subPoint.text); }}
-                                              aria-label={t('scratch.sort.removeSubPoint')} title={t('scratch.sort.removeSubPoint')}
-                                              className={`${HEAD_TOOL} inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-red-600 md:h-7 md:w-7 dark:hover:bg-gray-800 dark:hover:text-red-400`}>
-                                              <TrashIcon className="h-4 w-4" aria-hidden="true" />
-                                            </button>
+                                            <div className={`flex shrink-0 items-center gap-1 transition-opacity duration-150 ${hoverActions.actions}`}>
+                                              <button type="button" onClick={() => setRenaming({ kind: 'subpoint', id: subPoint.id })}
+                                                aria-label={t('scratch.sort.renameSubPoint')} title={t('scratch.sort.renameSubPoint')}
+                                                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-violet-700 md:h-7 md:w-7 dark:hover:bg-gray-800 dark:hover:text-violet-300">
+                                                <PencilSquareIcon className="h-4 w-4" aria-hidden="true" />
+                                              </button>
+                                              <button type="button" onClick={() => { void removeSubPoint(subPoint.id, subPoint.text); }}
+                                                aria-label={t('scratch.sort.removeSubPoint')} title={t('scratch.sort.removeSubPoint')}
+                                                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-red-600 md:h-7 md:w-7 dark:hover:bg-gray-800 dark:hover:text-red-400">
+                                                <TrashIcon className="h-4 w-4" aria-hidden="true" />
+                                              </button>
+                                            </div>
                                           )}
                                         </div>
                                       )}

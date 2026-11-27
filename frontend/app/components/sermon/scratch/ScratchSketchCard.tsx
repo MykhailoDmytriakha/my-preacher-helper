@@ -5,6 +5,7 @@ import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/react';
 import { ArrowRightIcon, CheckIcon, PencilSquareIcon, TrashIcon } from '@heroicons/react/24/outline';
 import React, { useCallback } from 'react';
 
+import hoverActions from '@/components/ui/HoverActions.module.css';
 import { useTranslation } from '@locales/useTranslation';
 
 import type { ScratchNote } from '@/models/models';
@@ -63,7 +64,15 @@ interface ScratchSketchCardProps {
  * has focused one of them, or the move menu is open; the card keeps its size either way. A finger has
  * no hover, so on touch screens they stay in their row under the words.
  */
-const TOOLBAR = 'flex items-center gap-0.5 transition-opacity duration-150 [@media(hover:hover)_and_(pointer:fine)]:absolute [@media(hover:hover)_and_(pointer:fine)]:bottom-1.5 [@media(hover:hover)_and_(pointer:fine)]:right-1.5 [@media(hover:hover)_and_(pointer:fine)]:z-10 [@media(hover:hover)_and_(pointer:fine)]:rounded-lg [@media(hover:hover)_and_(pointer:fine)]:border [@media(hover:hover)_and_(pointer:fine)]:border-gray-200 [@media(hover:hover)_and_(pointer:fine)]:bg-white [@media(hover:hover)_and_(pointer:fine)]:p-0.5 [@media(hover:hover)_and_(pointer:fine)]:shadow-sm [@media(hover:hover)_and_(pointer:fine)]:opacity-0 group-hover/card:opacity-100 group-has-[:focus-visible]/card:opacity-100 has-[[data-open]]:opacity-100 dark:[@media(hover:hover)_and_(pointer:fine)]:border-gray-700 dark:[@media(hover:hover)_and_(pointer:fine)]:bg-gray-800';
+const TOOLBAR = [
+  'flex items-center gap-0.5 transition-opacity duration-150',
+  '[@media(hover:hover)_and_(pointer:fine)]:absolute [@media(hover:hover)_and_(pointer:fine)]:bottom-1.5 [@media(hover:hover)_and_(pointer:fine)]:right-1.5',
+  '[@media(hover:hover)_and_(pointer:fine)]:z-10 [@media(hover:hover)_and_(pointer:fine)]:rounded-lg [@media(hover:hover)_and_(pointer:fine)]:p-0.5 [@media(hover:hover)_and_(pointer:fine)]:shadow-sm',
+  '[@media(hover:hover)_and_(pointer:fine)]:border [@media(hover:hover)_and_(pointer:fine)]:border-gray-200 [@media(hover:hover)_and_(pointer:fine)]:bg-white',
+  'dark:[@media(hover:hover)_and_(pointer:fine)]:border-gray-700 dark:[@media(hover:hover)_and_(pointer:fine)]:bg-gray-800',
+  'group-has-[:focus-visible]/card:opacity-100 group-has-[:focus-visible]/card:pointer-events-auto',
+  'has-[[data-open]]:opacity-100 has-[[data-open]]:pointer-events-auto',
+].join(' ');
 
 const ICON_BUTTON = 'inline-flex shrink-0 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-100';
 
@@ -94,7 +103,7 @@ export default function ScratchSketchCard({
     <div ref={setRef} {...drag.listeners} {...drag.attributes} role="group" tabIndex={-1} aria-disabled={undefined}
       data-testid={`scratch-sketch-${note.id}`}
       onClickCapture={(event) => { if (swallowClick()) { event.preventDefault(); event.stopPropagation(); } }}
-      className={`group/card relative flex items-start gap-1 rounded-xl border py-1.5 pl-1 pr-1 outline-none transition-[background-color,border-color,box-shadow] duration-300 [-webkit-touch-callout:none] [touch-action:manipulation] ${
+      className={`group/card ${hoverActions.row} relative flex items-start gap-1 rounded-xl border py-1.5 pl-1 pr-1 outline-none transition-[background-color,border-color,box-shadow] duration-300 [-webkit-touch-callout:none] [touch-action:manipulation] ${
         isReadOnly || editing ? '' : 'cursor-grab select-none active:cursor-grabbing'} ${frame} ${
         justPlaced ? 'shadow-[0_0_0_3px_rgba(139,92,246,0.35)]' : ''}`}>
       {/* Where the note in the hand would land: right above this card or right under it. */}
@@ -124,7 +133,7 @@ export default function ScratchSketchCard({
             )}
             <span className="flex-1" />
             {!isReadOnly && (
-              <div className={TOOLBAR}>
+              <div className={`${TOOLBAR} ${hoverActions.actions}`}>
                 {/* Wide screens: the choice opens beside the arrow and never changes the card's size. */}
                 <Menu as="div" className="hidden md:block">
                   <MenuButton aria-label={moveTo} title={moveTo} className={`${ICON_BUTTON} h-8 w-8 cursor-pointer`}>

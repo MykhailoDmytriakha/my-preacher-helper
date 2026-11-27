@@ -109,7 +109,12 @@ describe('ScratchSortingBoard', () => {
   it('moves a note to the point chosen in «Move to…»', async () => {
     const user = userEvent.setup();
     const props = renderBoard();
-    await user.click(within(card('n1')).getAllByRole('button', { name: 'scratch.sort.moveTo' })[0]);
+    const note = card('n1');
+    const move = within(note).getAllByRole('button', { name: 'scratch.sort.moveTo' })[0];
+    const edit = within(note).getByRole('button', { name: 'scratch.card.edit' });
+    expect(note).toHaveClass('row');
+    expect(move.closest('.actions')).toContainElement(edit);
+    await user.click(move);
     await user.click(await screen.findByRole('menuitem', { name: 'Point one' }));
     expect(props.onPlace).toHaveBeenCalledWith(['n1'], { section: 'main', pointId: 'p1', subPointId: null }, undefined);
   });
@@ -137,13 +142,21 @@ describe('ScratchSortingBoard', () => {
   it('renames a point and a sub-point in place', async () => {
     const user = userEvent.setup();
     const props = renderBoard();
-    await user.click(within(pointZone()).getByRole('button', { name: 'scratch.sort.renamePoint' }));
+    const renamePoint = within(pointZone()).getByRole('button', { name: 'scratch.sort.renamePoint' });
+    const pointRow = renamePoint.closest('.row');
+    expect(pointRow).toContainElement(within(pointZone()).getByText('Point one', { exact: true }));
+    expect(renamePoint.closest('.actions')).toContainElement(within(pointZone()).getByRole('button', { name: 'scratch.sort.removePoint' }));
+    await user.click(renamePoint);
     const pointTitle = screen.getByRole('textbox', { name: 'scratch.sort.pointTitle' });
     await user.clear(pointTitle);
     await user.type(pointTitle, 'Point renamed{Enter}');
     expect(props.onRenameTitle).toHaveBeenCalledWith({ kind: 'point', id: 'p1' }, 'Point renamed');
 
-    await user.click(within(subZone()).getByRole('button', { name: 'scratch.sort.renameSubPoint' }));
+    const renameSubPoint = within(subZone()).getByRole('button', { name: 'scratch.sort.renameSubPoint' });
+    const subPointRow = renameSubPoint.closest('.row');
+    expect(subPointRow).toContainElement(within(subZone()).getByText('Sub one', { exact: true }));
+    expect(renameSubPoint.closest('.actions')).toContainElement(within(subZone()).getByRole('button', { name: 'scratch.sort.removeSubPoint' }));
+    await user.click(renameSubPoint);
     const subTitle = screen.getByRole('textbox', { name: 'scratch.sort.subPointTitle' });
     await user.clear(subTitle);
     await user.type(subTitle, 'Sub renamed');
