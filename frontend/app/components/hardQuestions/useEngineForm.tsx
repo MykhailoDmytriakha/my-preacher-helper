@@ -4,10 +4,12 @@ import { useParams } from 'next/navigation';
 import { useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 
-import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { DataSyncStatus, type TextComparison } from '@/data-engine/DataSyncStatus';
+import { hasHardQuestionTextConflict, useDataDocument, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useTranslation } from '@locales/useTranslation';
+
+import { QUIET_BUTTON } from './parts';
 
 type Resource = { collection: string; id: string };
 type Selection = Parameters<typeof useDataForm>[2];
@@ -56,11 +58,66 @@ export function useEngineForm(resource: Resource | null, slot: string, selection
   return { form, recovery };
 }
 
+const questionFieldLabels: Readonly<Record<string, string>> = {
+  title: 'hardQuestions.question.fieldTitle',
+  short: 'hardQuestions.question.short',
+  detail: 'hardQuestions.question.detail',
+  differ: 'hardQuestions.question.differ',
+  alternates: 'hardQuestions.question.fieldAlternates',
+  scriptureRefs: 'hardQuestions.question.scripture',
+  basisIds: 'hardQuestions.question.restsOn',
+};
+const themeFieldLabels: Readonly<Record<string, string>> = {
+  title: 'hardQuestions.dialogs.themeTitle',
+  intro: 'hardQuestions.dialogs.intro',
+};
+
+function hardQuestionTextComparison(comparison: ReturnType<typeof useDataForm>['comparison'],
+  t: ReturnType<typeof useTranslation>['t']): TextComparison | undefined {
+  if (!comparison?.hardQuestionFields?.length) return;
+  const labels = comparison.stored.resource.collection === 'hardQuestions' ? questionFieldLabels : themeFieldLabels;
+  const fields = [...new Set(comparison.conflictPaths.flatMap(path => path.length === 1 && labels[path[0]] ? path : []))];
+  if (fields.length === 0) return;
+  const words = (value: unknown) => (
+    (typeof value === 'string' ? value : Array.isArray(value) ? value.join('\n') : '') || t('dataSync.emptyField')
+  );
+  const version = (document: typeof comparison.mine | null) => fields.map(field => {
+    const text = words(document?.[field]);
+    return fields.length === 1 ? text : `${t(labels[field])}\n${text}`;
+  }).join('\n\n');
+  return {
+    identity: comparison.identity, valueKind: 'field', scopedChoice: true,
+    ...(fields.length === 1 && { title: t(labels[fields[0]]) }),
+    mine: version(comparison.mine), stored: version(comparison.stored.value),
+  };
+}
+
+/** Open the form that owns a text comparison so its exact captured fields are used for the choice. */
+export function EngineReadingStatus({ document, onReview, reviewing = false }: {
+  document: ReturnType<typeof useDataDocument>; onReview: () => void; reviewing?: boolean;
+}) {
+  const { t } = useTranslation();
+  const reviewInForm = !document.readOnly && document.status?.phase === 'conflict'
+    && document.state && hasHardQuestionTextConflict(document.state.checkpoint);
+  if (reviewInForm && reviewing) return null;
+  return (
+    <>
+      <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} className="mt-3"
+        onRetry={reviewInForm ? undefined : document.retry} onKeepLocal={reviewInForm ? undefined : () => document.keepLocal()}
+        onAcceptRemote={reviewInForm ? undefined : () => document.acceptRemote()} />
+      {reviewInForm && <button type="button" onClick={onReview} className={QUIET_BUTTON}>{t('dataSync.versionComparison')}</button>}
+    </>
+  );
+}
+
 /** The form's one voice about its delivery: queued, refused, changed elsewhere, words to recover. */
 export function EngineFormStatus({ form, recovery, className }: ReturnType<typeof useEngineForm> & { className?: string }) {
+  const { t } = useTranslation();
+  const comparison = hardQuestionTextComparison(form.comparison, t);
   return (
     <DataSyncStatus subject={form.recoveryIdentity} status={form.status} error={form.error} errorWords={form.errorWords} className={className}
-      onRetry={form.retry} onKeepLocal={form.keepLocal} onAcceptRemote={form.acceptRemote}
+      comparison={comparison} onRetry={form.retry}
+      onKeepLocal={() => form.keepLocal(undefined, form.captureDocumentMetadataAction())} onAcceptRemote={form.acceptRemote}
       recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
       onRecover={recovery.recover} onDiscardRecovery={recovery.discard} />
   );

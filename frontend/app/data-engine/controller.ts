@@ -33,6 +33,7 @@ import { isOrderedGroupFlowText } from './groupFlowTitleAction';
 import { captureGroupMeetingReview } from './groupMeetingReview';
 import { retryGroupStepPlacement } from './groupStepPlacement';
 import { groupTextDecision, isGroupStatusComparison, projectGroupTextDecisions, readGroupFlowTextChoice, readGroupTextReview, sameGroupText, writeGroupFlowTextChoice } from './groupTextReview';
+import { hardQuestionTextField } from './hardQuestionFieldAction';
 import { liveSubmittedWork, sameLiveAtomicProof } from './liveSubmittedWork';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectExactManualChoice, retainedAnchoredPlacementDraft, type ExactManualChoice } from './manualChoice';
@@ -876,6 +877,10 @@ export class EditorController {
   }
 
   hasChoiceAuthority(checkpoint = this.session.checkpoint()): boolean {
+    const result = this.result;
+    if (result?.kind === 'conflict' && checkpoint.pending[result.operationId] && this.manualRequests.has(result.operationId)
+      && result.snapshot.metadata?.generation === checkpoint.confirmed.metadata?.generation
+      && result.conflicts.some(({ path }) => hardQuestionTextField(checkpoint.confirmed.resource.collection, path))) return false;
     return Object.values(checkpoint.pending).every(intent => !intent.borrowedManualScope);
   }
 
@@ -1135,7 +1140,8 @@ export class EditorController {
   private async applyCommit(request: CommitRequest): Promise<void> {
     this.assertCurrent();
     // Forms and action scopes resolve their own refusals. A recovered editor can still own a document deletion.
-    if (this.session.checkpoint().pending[request.id] && editorSlot(request.editorId) === null
+    if (this.session.checkpoint().pending[request.id] && (editorSlot(request.editorId) === null
+      || (request.retentionScope && readManualScopeIdentity(request.retentionScope) && request.hardQuestionFieldActions))
       && !isDocumentDeletion(request)) this.manualRequests.add(request.id);
     if (this.completedCommits.includes(request.id)) return;
     if (request.atomic && !['acknowledged', 'cancelled'].includes(request.state)) this.atomicPending.set(request.id, request.atomic);
@@ -1966,7 +1972,17 @@ export class EditorController {
         source = record.checkpoint;
         const records = projectExactManualChoice(record, decision, retired);
         [projected] = records;
-        return records;
+        if (!decision.hardQuestionFieldReview || !projected.checkpoint.dirty) return records;
+        const session = DataSession.restore(projected.checkpoint);
+        const replacement = this.options.commits!.choiceReplacement(record.editorId, projected.checkpoint, {
+          retentionScope: decision.hardQuestionFieldReview.scopeId,
+          action: { kind: 'document-metadata', time: decision.choiceTime ?? null,
+            hardQuestionFieldReview: decision.hardQuestionFieldReview },
+        });
+        if (!replacement) throw Object.assign(new Error('The shown question choice could not be saved'), { code: 'decision-changed' });
+        session.applyCommit(replacement);
+        projected = { ...projected, checkpoint: session.checkpoint() };
+        return { editorRecords: [projected, ...records.slice(1)], manualRecoveries: [], replacements: [replacement] };
       }, { roots: [decision.request] });
       if (!source || !projected) throw new Error('Choice checkpoint projection was not captured');
       await this.applyChoiceProjection(source, projected, captures);

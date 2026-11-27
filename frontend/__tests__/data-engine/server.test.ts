@@ -10289,6 +10289,114 @@ describe('transactional DataEngine server', () => {
   });
 });
 
+describe('hard-question manual field chronology', () => {
+  const owner = 'owner-1';
+  const resource = { collection: 'hardQuestions', id: 'question-clock' };
+  const packet = { protocol: 1, owner, resource } as const;
+  const value = (text: string): FieldValue => ({ exists: true, value: text });
+  const time = (offset: number) => ({ earliestMs: 1_800_000_000_000 + offset, latestMs: 1_800_000_000_005 + offset });
+  const written = (operationId: string, before: string, after: string, observedRevision: number, offset: number | null): DataCommand => ({
+    ...packet, dependsOn: [], operationId, generation: 'clock-opening', kind: 'update',
+    changes: [{ path: ['short'], before: value(before), after: value(after) }],
+    hardQuestionFieldActions: { short: { observedRevision, time: offset === null ? null : time(offset) } },
+  });
+  const opening = () => processCommand(owner, { ...packet, dependsOn: [], operationId: 'clock-opening', generation: null, kind: 'create',
+    value: { userId: owner, title: 'Hard question', rank: 1000, createdAt: '2026-11-25T00:00:00.000Z',
+      updatedAt: '2026-11-25T00:00:00.000Z', short: 'Opening', detail: 'Independent words' } });
+
+  it.each([
+    [20, 'acknowledged', 'Opening'],
+    [90, 'acknowledged', 'Offline words'],
+    [62, 'conflict', 'Opening'],
+    [null, 'conflict', 'Opening'],
+  ] as const)('considers the original action time when a question answer is delivered late (%s)', async (offset, kind, winner) => {
+    expect((await opening()).kind).toBe('acknowledged');
+    expect((await processCommand(owner, written('desktop-edit', 'Opening', 'Temporary', 1, 40))).kind).toBe('acknowledged');
+    expect((await processCommand(owner, written('desktop-return', 'Temporary', 'Opening', 2, 60))).kind).toBe('acknowledged');
+
+    const command = written('phone-arrives', 'Opening', 'Offline words', 1, offset);
+    const result = await processCommand(owner, command);
+    expect(result).toMatchObject({ kind, snapshot: { value: { short: winner, detail: 'Independent words' } } });
+    if (kind === 'conflict') expect(result).toMatchObject({ conflicts: [{ path: ['short'], mine: value('Offline words'), theirs: value('Opening') }] });
+    const history = [...documents].filter(([path]) => path.startsWith(`hardQuestions/${resource.id}/_metadataHistory/`));
+    expect(history).toHaveLength(kind === 'acknowledged' ? 1 : 0);
+    if (kind === 'acknowledged') expect(history[0][1]).toMatchObject({
+      fields: [{ field: 'short', value: winner === 'Opening' ? 'Offline words' : 'Opening' }],
+    });
+    expect(await processCommand(owner, command)).toEqual(result);
+  });
+
+  it('asks about an old stored field that may have returned before field evidence existed', async () => {
+    documents.set(`${resource.collection}/${resource.id}`, {
+      userId: owner, title: 'Hard question', rank: 1000, short: 'Opening',
+      createdAt: '2026-11-25T00:00:00.000Z', updatedAt: '2026-11-25T00:00:00.000Z',
+      _dataEngine: { protocol: 1, generation: 'clock-opening', revision: 3, deleted: false },
+    });
+    expect(await processCommand(owner, written('old-cached-action', 'Opening', 'Offline words', 1, 20))).toMatchObject({
+      kind: 'conflict', snapshot: { value: { short: 'Opening' } },
+      conflicts: [{ path: ['short'], mine: value('Offline words'), theirs: value('Opening') }],
+    });
+  });
+
+  it('keeps an earlier opening for fields that an intervening change did not touch', async () => {
+    expect((await opening()).kind).toBe('acknowledged');
+    const desk = { ...written('different-field', 'Opening', 'Other details', 1, 40),
+      changes: [{ path: ['detail'], before: value('Independent words'), after: value('Other details') }],
+      hardQuestionFieldActions: { detail: { observedRevision: 1, time: time(40) } } } as DataCommand;
+    expect((await processCommand(owner, desk)).kind).toBe('acknowledged');
+    expect(await processCommand(owner, written('independent-action', 'Opening', 'Offline words', 1, 20))).toMatchObject({
+      kind: 'acknowledged', snapshot: { value: { short: 'Offline words', detail: 'Other details' } },
+    });
+  });
+
+  it.each([
+    [20, 'hard-question-field-settled'],
+    [90, 'hard-question-field-queued'],
+  ] as const)('keeps the decided field out of an ambiguous sibling comparison (%s)', async (offset, code) => {
+    expect((await opening()).kind).toBe('acknowledged');
+    const openingDetail = value('Independent words');
+    const desktopDetail = value('Desktop detail');
+    const phoneDetail = value('Phone detail');
+    const desk = written('desktop-edit', 'Opening', 'Desktop short', 1, 40) as Extract<DataCommand, { kind: 'update' }>;
+    desk.changes.push({ path: ['detail'], before: openingDetail, after: desktopDetail });
+    desk.hardQuestionFieldActions!.detail = { observedRevision: 1, time: null };
+    expect((await processCommand(owner, desk)).kind).toBe('acknowledged');
+
+    const phone = written('phone-edit', 'Opening', 'Phone short', 1, offset) as Extract<DataCommand, { kind: 'update' }>;
+    phone.changes.push({ path: ['detail'], before: openingDetail, after: phoneDetail });
+    phone.hardQuestionFieldActions!.detail = { observedRevision: 1, time: time(offset) };
+    expect(await processCommand(owner, phone)).toMatchObject({
+      kind: 'conflict', snapshot: { value: { short: 'Desktop short', detail: 'Desktop detail' } },
+      conflicts: expect.arrayContaining([
+        { path: ['detail'], base: openingDetail, mine: phoneDetail, theirs: desktopDetail },
+        { path: ['short'], code, base: value('Opening'), mine: value('Phone short'), theirs: value('Desktop short') },
+      ]),
+    });
+  });
+
+  it.each([
+    ['hardQuestions', 'short'],
+    ['hardQuestionThemes', 'intro'],
+  ])('protects the deliberate return in %s %s when the delayed edit has no order proof', async (collection, field) => {
+    const resource = { collection, id: 'dated-hard-question' };
+    const base = { protocol: 1, owner: 'owner-1', resource, dependsOn: [] } as const;
+    const fieldValue = (value: string): FieldValue => ({ exists: true, value });
+    const edit = (operationId: string, before: string, after: string): DataCommand => ({
+      ...base, dependsOn: [], kind: 'update', generation: 'opening', operationId,
+      changes: [{ path: [field], before: fieldValue(before), after: fieldValue(after) }],
+    });
+    expect(await processCommand(base.owner, { ...base, dependsOn: [], kind: 'create', generation: null, operationId: 'opening',
+      value: { userId: base.owner, title: 'Hard question', rank: 1000, createdAt: '2026-11-25T00:00:00.000Z',
+        updatedAt: '2026-11-25T00:00:00.000Z', [field]: 'Opening' } })).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(base.owner, edit('new-words', 'Opening', 'Temporary'))).toMatchObject({ kind: 'acknowledged' });
+    expect(await processCommand(base.owner, edit('deliberate-return', 'Temporary', 'Opening'))).toMatchObject({ kind: 'acknowledged' });
+    const result = await processCommand(base.owner, edit('delayed-offline', 'Opening', 'Delayed words'));
+    expect(result).toMatchObject({ kind: 'conflict', snapshot: { value: { [field]: 'Opening' } }, conflicts: [{
+      path: [field], base: fieldValue('Opening'), mine: fieldValue('Delayed words'), theirs: fieldValue('Opening'),
+    }] });
+  });
+});
+
 describe('transactional collection feed', () => {
   const headPath = (collection = 'sermons') => `${HEADS_COLLECTION}/${collectionHeadId('owner-1', collection)}`;
   const changePath = (version: number) => `${headPath()}/changes/${sequenceId(version)}`;

@@ -9,12 +9,11 @@ import { ScriptureLinksInWindow } from '@/components/bible/VerseWindow';
 import { ActionsMenu } from '@/components/hardQuestions/ActionsMenu';
 import { BackLink, BASIS_DOT, ListLabel, PANEL, questionPath, QuestionRow, QUIET_BUTTON, sectionPath, themePath } from '@/components/hardQuestions/parts';
 import { ScripturePlaces } from '@/components/hardQuestions/ScripturePlaces';
-import { basisFormFields, basisFormSlot, EditBasisDialog } from '@/components/hardQuestions/themeForms';
-import { OrphanDraftWords, UnsavedDraftNotice, useRouteSegment } from '@/components/hardQuestions/useEngineForm';
+import { basisFormFields, basisFormSlot, EditBasisDialog, ThemeEditDialog } from '@/components/hardQuestions/themeForms';
+import { EngineReadingStatus, OrphanDraftWords, UnsavedDraftNotice, useRouteSegment } from '@/components/hardQuestions/useEngineForm';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { usePublishShellTitle } from '@/components/navigation/shellTitles';
 import { RecordUnavailable } from '@/components/RecordUnavailable';
-import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider, useDataDocument } from '@/data-engine/react.client';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useHardQuestions } from '@/hooks/useHardQuestions';
@@ -55,6 +54,7 @@ function BasisWorkspace({ themeId, basisId }: { themeId: string; basisId: string
     ?? (docTheme ? buildLibrary([docTheme], [...section.library.questionById.values()]).themeById.get(themeId) ?? null : null);
   const use = view?.bases.find((item) => item.basis.id === basisId) ?? null;
   const [editing, setEditing] = useState(false);
+  const [reviewingTheme, setReviewingTheme] = useState(false);
   const [recoverId, setRecoverId] = useState<string | null>(null);
   const resource = useMemo(() => ({ collection: 'hardQuestionThemes', id: themeId }), [themeId]);
   const selection = useMemo(() => basisFormFields(basisId), [basisId]);
@@ -111,8 +111,7 @@ function BasisWorkspace({ themeId, basisId }: { themeId: string; basisId: string
   return (
     <div className="mx-auto w-full max-w-4xl pb-10">
       <BackLink href={themePath(themeId)}>{view.theme.title}</BackLink>
-      <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} className="mt-3"
-        onRetry={document.retry} onKeepLocal={() => document.keepLocal()} onAcceptRemote={() => document.acceptRemote()} />
+      <EngineReadingStatus document={document} onReview={() => setReviewingTheme(true)} reviewing={reviewingTheme} />
       {!document.readOnly && !editing && (
         <UnsavedDraftNotice resource={resource} slot={basisFormSlot(basisId)} selection={selection} onResume={(draftId) => { setRecoverId(draftId); setEditing(true); }} />
       )}
@@ -171,6 +170,7 @@ function BasisWorkspace({ themeId, basisId }: { themeId: string; basisId: string
         </section>
       </div>
 
+      {reviewingTheme && <ThemeEditDialog themeId={themeId} onClose={() => setReviewingTheme(false)} />}
       {editing && <EditBasisDialog themeId={themeId} basisId={basisId} recoverId={recoverId} onClose={() => { setEditing(false); setRecoverId(null); }} />}
       {confirmDialog}
     </div>

@@ -4,6 +4,7 @@ import { keepReviewedAuthoredLists } from './authoredListChoice';
 import { AUTHORED_LIST_PROJECTION, isAuthoredListComparison } from './authoredStringList';
 import { manualSeriesTextChoiceFields } from './documentTextChoice';
 import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
+import { hardQuestionTextField, type HardQuestionTextField } from './hardQuestionFieldAction';
 import { projectHomileticReview, reviewedHomileticList } from './homileticPlanChoice';
 import { exactManualWords, manualChoiceFrames, replaySavedChoiceDelta } from './manualChoice';
 import { sameManualSelection } from './manualScope';
@@ -21,7 +22,7 @@ import type { ManualScope } from './manualScope';
 import type { SessionCheckpoint } from './session';
 import type { ConflictDetail, DocumentData, ResourceSnapshot } from './types';
 
-export interface ManualComparison { identity: string; requestId: string; conflictPaths: readonly (readonly string[])[]; mine: DocumentData; stored: ResourceSnapshot; remotePreview?: DocumentData; canKeepLocal?: false; thoughtText?: { id: string; mine: string; stored: string }; kind?: 'first-group-meeting' | 'returned-sermon-title' | 'returned-sermon-verse' | 'sermon-church'; preparationField?: ReturnType<typeof reviewedSermonPreparationField>; returnedSeriesFields?: readonly string[]; outlineParent?: NonNullable<ReturnType<typeof readOutlineParentComparison>> }
+export interface ManualComparison { identity: string; requestId: string; conflictPaths: readonly (readonly string[])[]; mine: DocumentData; stored: ResourceSnapshot; remotePreview?: DocumentData; canKeepLocal?: false; thoughtText?: { id: string; mine: string; stored: string }; kind?: 'first-group-meeting' | 'returned-sermon-title' | 'returned-sermon-verse' | 'sermon-church'; preparationField?: ReturnType<typeof reviewedSermonPreparationField>; returnedSeriesFields?: readonly string[]; hardQuestionFields?: readonly HardQuestionTextField[]; outlineParent?: NonNullable<ReturnType<typeof readOutlineParentComparison>> }
 
 function exactSermonVerse(request: CommitRequest, conflicts: readonly ConflictDetail[], mine: DocumentData, stored: ResourceSnapshot,
   selection: ReturnType<ManualScope['getState']>['record']['selection']): boolean {
@@ -93,6 +94,15 @@ export function manualComparison(form: ReturnType<ManualScope['getState']>, pare
       const seriesConflicts = [...conflicts, ...observedSeriesConflicts];
       const seriesFields = manualSeriesTextChoiceFields(request.baseline, stored, seriesConflicts, form.record.selection, mine);
       const seriesText = seriesFields && !sameManualSelection(mine, stored.value, [seriesFields[0]]);
+      const hardQuestionComparison = exact && request.baseline.metadata?.generation === stored.metadata?.generation
+        && request.result.conflicts.some(({ path }) => hardQuestionTextField(stored.resource.collection, path)
+          && form.record.selection.some(selected => equalValues(selected, path)));
+      const hardQuestionFields = hardQuestionComparison
+        ? conflicts.flatMap(({ path }) => {
+          const field = hardQuestionTextField(stored.resource.collection, path);
+          return field && form.record.selection.some(selected => equalValues(selected, path))
+            && !sameManualSelection(mine, stored.value, path) ? [field] : [];
+        }) : undefined;
       const exactPreparationText = stored.resource.collection === 'sermons' && request.baseline.metadata
         && request.baseline.metadata.generation === stored.metadata?.generation
         && conflicts.some(({ path }) => preparationTextField(path) !== undefined
@@ -109,7 +119,7 @@ export function manualComparison(form: ReturnType<ManualScope['getState']>, pare
         : undefined;
       const outlineParent = outlineFrames && readOutlineParentComparison({ confirmed: outlineFrames.basis,
         conflicts, draft: outlineFrames.reviewed, remoteCandidate: stored });
-      if (changed || seriesText || exactPreparationText || exactVerse || returnedTitle || church || preparationField || dateField || exactThoughtText || exactList || outlineParent) {
+      if (changed || seriesText || hardQuestionFields || exactPreparationText || exactVerse || returnedTitle || church || preparationField || dateField || exactThoughtText || exactList || outlineParent) {
         const comparedField = returnedTitle ? 'title' : exactVerse ? 'verse' : church ? 'church' : undefined;
         const headerReview = returnedTitle || returnedVerse || church;
         const reviewedFields = church
@@ -124,6 +134,7 @@ export function manualComparison(form: ReturnType<ManualScope['getState']>, pare
           ...(church && { kind: 'sermon-church' as const }),
           ...(preparationField && { preparationField }),
           ...(seriesText && seriesFields[0] !== 'description' && { returnedSeriesFields: seriesFields }),
+          ...(hardQuestionFields && { hardQuestionFields }),
           ...(outlineParent && { outlineParent }), ...(thoughtId && exactThoughtText && { thoughtText: { id: thoughtId, ...exactThoughtText } }), stored: JSON.parse(JSON.stringify(stored)) as ResourceSnapshot };
       }
     }

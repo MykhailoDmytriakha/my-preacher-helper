@@ -41,7 +41,11 @@ jest.mock('@/components/bible/VerseWindow', () => {
 });
 jest.mock('@/components/bible/useBookTexts', () => ({ useBookTexts: () => new Map() }));
 jest.mock('@/components/MarkdownDisplay', () => ({ __esModule: true, default: ({ content }: { content: string }) => <div data-testid="markdown">{content}</div> }));
-jest.mock('@/data-engine/DataSyncStatus', () => ({ DataSyncStatus: () => null }));
+jest.mock('@/data-engine/DataSyncStatus', () => ({
+  DataSyncStatus: ({ comparison }: { comparison?: { mine: string; stored: string } }) => comparison
+    ? <div role="region" aria-label="dataSync.versionComparison"><p>{comparison.mine}</p><p>{comparison.stored}</p></div>
+    : null,
+}));
 jest.mock('@/data-engine/DataCollectionStatus', () => ({ DataCollectionStatus: () => null }));
 
 // The search lives in the address (its own tests); here it filters, and its clearing is watched.
@@ -60,19 +64,26 @@ jest.mock('@/hooks/useSearchInputQuery', () => {
 type Doc = Record<string, unknown> | null;
 let mockDocument: Doc = null;
 let mockPresence: { kind: string } = { kind: 'present' };
+let mockConflictPaths: readonly (readonly string[])[] = [];
+let mockComparison: {
+  identity: string; hardQuestionFields: readonly string[]; conflictPaths: readonly (readonly string[])[];
+  mine: Record<string, unknown>; stored: { value: Record<string, unknown>; resource: { collection: string } };
+} | null = null;
 let mockDraftChoices: { id: string }[] = [];
 const mockFormSave = jest.fn((_updater?: (draft: Record<string, unknown>) => Record<string, unknown>, _action?: unknown) => Promise.resolve());
 const mockFormUpdate = jest.fn((_updater: (draft: Record<string, unknown>) => Record<string, unknown>) => Promise.resolve());
 const mockRecover = jest.fn((_id: string) => Promise.resolve());
 jest.mock('@/data-engine/react.client', () => ({
+  hasHardQuestionTextConflict: () => mockConflictPaths.some(path => ['title', 'short', 'detail', 'differ', 'intro'].includes(path[0])),
   DataDocumentProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useDataDocument: () => ({
-    data: mockDocument, presence: mockPresence, status: null, error: null, readOnly: false, loading: false,
+    data: mockDocument, presence: mockPresence, status: mockConflictPaths.length ? { phase: 'conflict' } : null,
+    state: { checkpoint: { conflicts: mockConflictPaths.map(path => ({ path })) } }, error: null, readOnly: false, loading: false,
     recoveryIdentity: {}, retry: jest.fn(), keepLocal: jest.fn(), acceptRemote: jest.fn(),
   }),
   useDataForm: () => ({
-    data: mockDocument, loading: false, active: true, readOnly: false, dirty: false, busy: false, status: null, error: null,
-    recoveryIdentity: {}, recoveryReady: true, recoveryVersion: '', begin: () => Promise.resolve(), update: mockFormUpdate,
+    data: mockDocument, loading: false, active: true, readOnly: false, dirty: false, busy: false, status: null, comparison: mockComparison, error: null,
+    recoveryIdentity: {}, recoveryReady: true, recoveryVersion: '', exactChoice: Boolean(mockComparison), begin: () => Promise.resolve(), update: mockFormUpdate,
     save: mockFormSave, cancel: () => Promise.resolve(), recover: mockRecover, retry: jest.fn(), keepLocal: jest.fn(), acceptRemote: jest.fn(),
     listRecoverable: () => Promise.resolve([]), discardRecovery: jest.fn(), captureDocumentMetadataAction: () => ({ documentMetadata: { time: null } }),
   }),
@@ -120,6 +131,8 @@ beforeEach(() => {
   mockDocument = null;
   mockPresence = { kind: 'present' };
   mockDraftChoices = [];
+  mockConflictPaths = [];
+  mockComparison = null;
   mockComplete = true;
   mockThemes = [CLOTHES];
   mockQuestions = [
@@ -263,6 +276,21 @@ describe('a theme', () => {
     expect(within(basesSection).getByRole('link', { name: /Мерило — стыдливость/ })).toHaveAttribute('href', '/care/questions/clothes/basis/b1');
     // A question's line names the basis it rests on by its title: the short label is gone (2026-11-26).
     expect(within(trousers).getByText('Мерило — стыдливость')).toBeInTheDocument();
+  });
+
+  it('opens theme text comparison from its reading page without a duplicate review button', () => {
+    mockConflictPaths = [['intro']];
+    mockComparison = {
+      identity: 'theme review', hardQuestionFields: ['intro'], conflictPaths: [['intro']],
+      mine: { intro: 'Моё вступление' }, stored: { value: { intro: 'Сохранённое вступление' }, resource: { collection: 'hardQuestionThemes' } },
+    };
+    render(<HardQuestionThemePage />);
+    fireEvent.click(screen.getByRole('button', { name: 'dataSync.versionComparison' }));
+    const dialog = screen.getByRole('dialog', { name: 'hardQuestions.theme.editTitle' });
+    expect(within(dialog).getByText('Моё вступление')).toBeInTheDocument();
+    expect(within(dialog).getByText('Сохранённое вступление')).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'common.save' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'dataSync.versionComparison' })).not.toBeInTheDocument();
   });
 
   it('a basis card\'s places open in the verse window, while the card itself still opens the basis', () => {
@@ -465,6 +493,24 @@ describe('a question', () => {
     expect(screen.getAllByRole('button', { name: 'hardQuestions.question.openPlace' })).toHaveLength(1);
   });
 
+  it('opens the exact answer comparison from its reading page and omits text already ordered by the engine', () => {
+    open('ivf', 'none', { userId: 'u', title: 'Можно ли ЭКО?', rank: 1 });
+    mockConflictPaths = [['short'], ['detail']];
+    mockComparison = {
+      identity: 'question review', hardQuestionFields: ['detail'], conflictPaths: [['detail']],
+      mine: { short: 'Старый краткий ответ', detail: 'Моё объяснение' },
+      stored: { value: { short: 'Новый краткий ответ', detail: 'Сохранённое объяснение' }, resource: { collection: 'hardQuestions' } },
+    };
+    render(<HardQuestionPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'dataSync.versionComparison' }));
+    const comparison = screen.getByRole('region', { name: 'dataSync.versionComparison' });
+    expect(within(comparison).getByText('Моё объяснение')).toBeInTheDocument();
+    expect(within(comparison).getByText('Сохранённое объяснение')).toBeInTheDocument();
+    expect(within(comparison).queryByText('Старый краткий ответ')).not.toBeInTheDocument();
+    expect(within(comparison).queryByText('Новый краткий ответ')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'common.save' })).toBeDisabled();
+  });
+
   it('is laid out as the theme\'s page: its number and group under the title, «Изменить» in sight, the rest behind «⋯»', async () => {
     open('trousers', 'clothes', { userId: 'u', title: 'Можно ли носить брюки?', themeId: 'clothes', groupId: 'g2', rank: 1, short: 'Сами по себе — нет (Втор 22:5).', basisIds: ['b1'] });
     mockThemes = [{ ...CLOTHES, bases: [{ id: 'b1', title: 'Мерило — стыдливость', scriptureRefs: ['1 Тим 2:9'] }, { id: 'b2', title: 'Обычай и заповедь' }] }];
@@ -575,6 +621,19 @@ describe('the question form', () => {
 
 describe('a basis', () => {
   beforeEach(() => { mockParams = { themeId: 'clothes', basisId: 'b1' }; mockDocument = { title: 'Одежда' }; });
+
+  it('opens the theme form for an opening-words conflict while reading a basis', () => {
+    mockConflictPaths = [['intro']];
+    mockComparison = {
+      identity: 'theme review from basis', hardQuestionFields: ['intro'], conflictPaths: [['intro']],
+      mine: { intro: 'Моё вступление' }, stored: { value: { intro: 'Сохранённое вступление' }, resource: { collection: 'hardQuestionThemes' } },
+    };
+    render(<HardQuestionBasisPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'dataSync.versionComparison' }));
+    const dialog = screen.getByRole('dialog', { name: 'hardQuestions.theme.editTitle' });
+    expect(within(dialog).getByText('Моё вступление')).toBeInTheDocument();
+    expect(within(dialog).getByText('Сохранённое вступление')).toBeInTheDocument();
+  });
 
   it('an edited basis with no place is not saved: the window asks for one (a basis kept before the rule)', async () => {
     mockDocument = { title: 'Одежда', bases: [{ id: 'b1', title: 'Мерило — стыдливость' }] };

@@ -15,7 +15,7 @@ import {
   sectionPath,
 } from '@/components/hardQuestions/parts';
 import { NewBasisDialog, THEME_FORM_FIELDS, THEME_FORM_SLOT, ThemeEditDialog } from '@/components/hardQuestions/themeForms';
-import { OrphanDraftWords, UnsavedDraftNotice, useRouteSegment } from '@/components/hardQuestions/useEngineForm';
+import { EngineReadingStatus, OrphanDraftWords, UnsavedDraftNotice, useRouteSegment } from '@/components/hardQuestions/useEngineForm';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { usePublishShellTitle } from '@/components/navigation/shellTitles';
 import { RecordUnavailable } from '@/components/RecordUnavailable';
@@ -24,7 +24,6 @@ import hoverActions from '@/components/ui/HoverActions.module.css';
 import { ReorderArrows } from '@/components/ui/ReorderArrows';
 import { DragHandle, SortableList } from '@/components/ui/SortableList';
 import { DataCollectionStatus } from '@/data-engine/DataCollectionStatus';
-import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider, useDataDocument } from '@/data-engine/react.client';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useHardQuestions } from '@/hooks/useHardQuestions';
@@ -161,8 +160,7 @@ function ThemeWorkspace({ themeId }: { themeId: string }) {
   return (
     <div className="mx-auto w-full max-w-4xl pb-10">
       <BackLink href={sectionPath}>{t('hardQuestions.title')}</BackLink>
-      <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} className="mt-3"
-        onRetry={document.retry} onKeepLocal={() => document.keepLocal()} onAcceptRemote={() => document.acceptRemote()} />
+      <EngineReadingStatus document={document} onReview={() => setDialog({ kind: 'edit' })} reviewing={dialog?.kind === 'edit'} />
       <DataCollectionStatus state={section.questionsState} />
       {!document.readOnly && dialog?.kind !== 'edit' && (
         <UnsavedDraftNotice resource={resource} slot={THEME_FORM_SLOT} selection={THEME_FORM_FIELDS} onResume={(draftId) => setDialog({ kind: 'edit', recoverId: draftId })} />

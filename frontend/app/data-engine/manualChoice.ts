@@ -12,6 +12,7 @@ import { writeField } from './fieldValues';
 import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './groupFirstMeeting';
 import { captureGroupMeetingReview } from './groupMeetingReview';
 import { captureGroupStepPlacement, carryAnchoredDraftChronology, groupPlacementSteps, mergeEditsAfterAnchoredPlacement, mergeGroupFlowRebase, projectGroupStepOnDocument } from './groupStepPlacement';
+import { hardQuestionFieldTargets, hardQuestionReviewFrames, hardQuestionTextField, type HardQuestionFieldReview } from './hardQuestionFieldAction';
 import { projectHomileticReview, reviewedHomileticList } from './homileticPlanChoice';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection, type ManualPath } from './manualScope';
@@ -84,11 +85,12 @@ export function exactManualRequest(stage: ManualStage | undefined, checkpoint: S
         && request.result.conflicts.some(({ path }) => preachDateNoteConflictId(path)) && record.selection.some(path => equalValues(path, ['preachDates']));
       const returnedField = record.resource.collection === 'sermons' ? (conflict: ConflictDetail) =>
         isReturnedSermonTitle(conflict) || isSermonVerseReview(conflict) || isSermonChurchReview(conflict) || reviewedSermonPreparationField(conflict) !== undefined
-        : record.resource.collection === 'series' ? isReturnedSeriesField : undefined;
+        : record.resource.collection === 'series' ? isReturnedSeriesField
+          : ({ path }: ConflictDetail) => Boolean(hardQuestionTextField(record.resource.collection, path));
       const savedFieldReview = returnedField && request.result?.kind === 'conflict'
         && request.result.conflicts.some(conflict => returnedField(conflict)
           && record.selection.some(path => equalValues(path, conflict.path)));
-      const fieldScope = request.sermonVerseAction?.reviewed || request.sermonChurchAction?.reviewed || request.sermonGoalTypeAction?.reviewed
+      const fieldScope = request.hardQuestionFieldActions || request.sermonVerseAction?.reviewed || request.sermonChurchAction?.reviewed || request.sermonGoalTypeAction?.reviewed
         || Object.values(request.sermonThesisFieldActions ?? {}).some(action => action?.reviewed)
         ? request.retentionScope ?? request.editorId : request.editorId;
       const savedFieldForm = savedFieldReview && readManualScopeIdentity(fieldScope);
@@ -112,6 +114,7 @@ export interface ExactManualChoice {
   choice: 'local' | 'remote';
   titles?: readonly OutlineTitleDecision[];
   choiceTime?: ActionTime | null;
+  hardQuestionFieldReview?: HardQuestionFieldReview & { scopeId: string };
   request: CommitRequest;
   stored: ResourceSnapshot;
   value: DocumentData;
@@ -132,6 +135,7 @@ export function manualChoiceFrames(request: CommitRequest, value: DocumentData, 
   const ordered = conflicts.filter(isOrderedSermonMetadata);
   if (ordered.length) return { ...sermonHeaderReviewFrames(basis, reviewed, stored, ordered, request.sermonChurchFill),
     conflicts: conflicts.filter(conflict => !isOrderedSermonMetadata(conflict)) };
+  if (hardQuestionFieldTargets(stored.resource.collection).length) return hardQuestionReviewFrames(basis, reviewed, stored, conflicts);
   return seriesReviewFrames(basis, reviewed, stored, conflicts);
 }
 
@@ -194,8 +198,10 @@ export function projectExactManualChoice(record: EditorRecord, decision: ExactMa
   } else if (request.result?.kind === 'conflict') {
     const conflicts = reviewedConflicts;
     const seriesFields = manualSeriesTextChoiceFields(request.baseline, stored, conflicts, decision.selection, reviewed);
-    const retained = basis.value && reviewed && stored.value && seriesFields
-      ? keepUncontestedDocumentText(basis.value, reviewed, stored.value, seriesFields)
+    const fieldsToDiscard = decision.hardQuestionFieldReview
+      ? [...new Set(conflicts.flatMap(({ path }) => path[0] === undefined ? [] : [path[0]]))] : seriesFields;
+    const retained = basis.value && reviewed && stored.value && fieldsToDiscard
+      ? keepUncontestedDocumentText(basis.value, reviewed, stored.value, fieldsToDiscard)
       : keepUncontestedSermonFields(basis, reviewed, stored, conflicts);
     if (retained) draft = projectManualSelection(stored.value!, retained, decision.selection);
   }

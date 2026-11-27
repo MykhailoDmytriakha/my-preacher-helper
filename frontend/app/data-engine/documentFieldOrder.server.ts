@@ -14,6 +14,7 @@ import { PREACH_DATE_TARGET } from './datedRowAction';
 import { acceptsDocumentField, documentFieldChange, documentFieldPath, documentFieldTargets, documentFieldValue, isLongTextDocumentField, replaceOrderedDocumentField, SERMON_METADATA_QUEUED, SERMON_METADATA_SETTLED, SERMON_REPEATED_WORDS, SERMON_CHURCH_REVIEW_CHANGED, SERMON_GOAL_TYPE_REVIEW_CHANGED, SERMON_PLAN_MODE_REVIEW_CHANGED, SERMON_PREPARATION_CHECK_REVIEW_CHANGED, SERMON_THESIS_REVIEW_CHANGED, SERMON_VERSE_REVIEW_CHANGED } from './documentFieldAction';
 import { commandFingerprint, equalValues, object, readField } from './fieldValues';
 import { GROUP_FLOW_TEXT_QUEUED, GROUP_FLOW_TEXT_SETTLED } from './groupFlowTitleAction';
+import { HARD_QUESTION_FIELD_QUEUED, HARD_QUESTION_FIELD_REVIEW, HARD_QUESTION_FIELD_SETTLED } from './hardQuestionFieldAction';
 import { PRAYER_STATUS_FIELDS, PRAYER_STATUS_QUEUED, PRAYER_STATUS_REVIEW, PRAYER_STATUS_SETTLED } from './prayerStatusAction';
 import { PRAYER_TEXT_QUEUED, PRAYER_TEXT_SETTLED } from './prayerTextAction';
 import { proofRevision, rowConflictPath, rowConflictValue } from './rowFieldAction';
@@ -81,7 +82,7 @@ const tracksScalarReturns = (target: DocumentFieldTarget) =>
     || target.action === 'prayerTitleAction' || target.action === 'prayerStatusAction' || target.action === 'prayerAnsweredAtAction'
     || target.action === 'planTemplateNameAction'
     || target.action === 'councilTitleAction' || target.action === 'councilDateAction' || target.action === 'councilLifecycleAction'
-    || target.action === 'tagColorAction'
+    || target.action === 'tagColorAction' || target.action === 'hardQuestionFieldActions'
     || (target.action === 'seriesFieldActions' && target.field !== 'description');
 
 const tracksOpeningReturns = (target: DocumentFieldTarget) =>
@@ -122,6 +123,7 @@ function previousField(raw: unknown, current: ResourceSnapshot, target: Document
 function readAction(command: Extract<DataCommand, { kind: 'update' }>, change: FieldChange, revision: number, serverMs: number, target: DocumentFieldTarget): DocumentFieldObservation<FieldValue> | undefined {
   const action: unknown = target.action === 'accountPreferenceActions' ? command.accountPreferenceActions?.[target.field]
     : target.action === 'seriesFieldActions' ? command.seriesFieldActions?.[target.field]
+    : target.action === 'hardQuestionFieldActions' ? command.hardQuestionFieldActions?.[target.field]
     : target.action === 'sermonPreparationCheckActions' ? command.sermonPreparationCheckActions?.[target.field]
     : target.action === 'sermonThesisFieldActions' ? command.sermonThesisFieldActions?.[target.field]
     : target.action === 'sermonPreparationTextActions' ? command.sermonPreparationTextActions?.[target.field]
@@ -256,6 +258,7 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
       ? SERMON_PREPARATION_CHECK_REVIEW_CHANGED
     : target.action === 'sermonThesisFieldActions' && command.sermonThesisFieldActions?.[target.field]?.reviewed ? SERMON_THESIS_REVIEW_CHANGED
     : (target.action === 'prayerStatusAction' || target.action === 'prayerAnsweredAtAction') && command[target.action]?.reviewed ? PRAYER_STATUS_REVIEW
+    : target.action === 'hardQuestionFieldActions' && command.hardQuestionFieldActions?.[target.field]?.reviewed ? HARD_QUESTION_FIELD_REVIEW
     : reviewedComment ? COMMENT_TEXT_REVIEW : undefined;
   if (reviewCode) {
     if (equalValues(stored, change.after)) return { command, previous };
@@ -323,7 +326,9 @@ function orderDocumentField(command: DataCommand, current: ResourceSnapshot, raw
   if (isLongTextDocumentField(target) && !previous && action.observedRevision < current.metadata.revision
     && equalValues(action.before, stored) && !equalValues(action.after, stored)) {
     const past = pastFieldOpenings(raw, target);
-    if (past === null || past?.includes(fieldDigest(stored, target))) {
+    // Before this field was tracked, the document revision is the only indication that the
+    // cached opening may have changed and returned. There is no safe automatic winner.
+    if (target.action === 'hardQuestionFieldActions' || past === null || past?.includes(fieldDigest(stored, target))) {
       return { command, uncertain: [{ path: change.path, ...(commentText && { code: COMMENT_TEXT_REVIEW }),
         base: change.before, mine: change.after, theirs: stored }] };
     }
@@ -456,6 +461,13 @@ export function orderedSeriesMetadata(command: DataCommand, current: ResourceSna
     }
   }
   return comparisons;
+}
+
+export function orderedHardQuestionMetadata(command: DataCommand, current: ResourceSnapshot,
+  orders: ReturnType<typeof orderDocumentFields>): ConflictDetail[] {
+  if (command.kind !== 'update') return [];
+  return orderedMetadataComparisons(command, current, orders, target => target.action === 'hardQuestionFieldActions',
+    { settled: HARD_QUESTION_FIELD_SETTLED, queued: HARD_QUESTION_FIELD_QUEUED });
 }
 
 export function orderedCouncilMetadata(command: DataCommand, current: ResourceSnapshot, orders: ReturnType<typeof orderDocumentFields>): ConflictDetail[] {

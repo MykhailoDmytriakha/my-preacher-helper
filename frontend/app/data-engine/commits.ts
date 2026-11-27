@@ -74,6 +74,7 @@ import type { DocumentFieldObservation, PreparationTextObservations, SermonChurc
 import type { ExegeticalPointStamp } from './exegeticalPointAction';
 import type { GroupMeetingFieldActions, GroupMeetingFieldCaptures } from './groupMeetingFieldAction';
 import type { GroupTextReviewStage } from './groupTextReview';
+import type { HardQuestionFieldObservations } from './hardQuestionFieldAction';
 import type { HomileticMoveActions, HomileticMoveGesture, HomileticPositionReviews, HomileticTitleActions } from './homileticPlan';
 import type { SeriesMembershipCapture } from './membershipIntent';
 import type { PrayerStatusObservations } from './prayerStatusAction';
@@ -197,6 +198,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   studyNoteReferenceEvidence?: StudyNoteReferenceEvidence;
   sermonChurchFill?: SermonChurchFill;
   seriesFieldActions?: SeriesFieldObservations;
+  hardQuestionFieldActions?: HardQuestionFieldObservations;
   prayerTextActions?: PrayerTextObservations;
   groupTitleAction?: DocumentFieldObservation;
   groupStatusAction?: DocumentFieldObservation;
@@ -359,6 +361,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.sermonChurchFill ?? null, incoming.sermonChurchFill ?? null)
     || !equalValues(current.prayerTextActions ?? null, incoming.prayerTextActions ?? null)
     || !equalValues(current.seriesFieldActions ?? null, incoming.seriesFieldActions ?? null)
+    || !equalValues(current.hardQuestionFieldActions ?? null, incoming.hardQuestionFieldActions ?? null)
     || !equalValues(current.seriesMembership ?? null, incoming.seriesMembership ?? null)
     || !equalValues(current.groupTitleAction ?? null, incoming.groupTitleAction ?? null)
     || !equalValues(current.groupStatusAction ?? null, incoming.groupStatusAction ?? null)
@@ -499,7 +502,7 @@ function initialMeetingChange(record: CommitRequest): FieldChange | undefined {
 }
 
 export function hasTimedAncestor(record: CommitRequest): boolean {
-  return record.sequence === 0 && Boolean(record.sourceNoteLink || record.seriesMembership || record.serviceOrderPlacement || record.serviceOrderStepPlacement || record.outlinePointPlacement || record.outlineSubpointMoves?.length || record.groupFlowStepPlacement || record.councilTopicPlacement || record.serviceOrderTitleAction || record.prayerTitleAction || record.prayerTextActions || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.studyNoteContentAction || record.studyNoteTypeAction || record.commentKindAction || record.commentPlaceAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonThesisFieldActions || record.sermonPreparationTextActions || record.sermonRepeatedWordsAction || record.sermonPlanModeAction || record.accountPreferenceActions || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.homileticTitleActions || record.homileticMoveActions || record.seriesFieldActions || record.groupTitleAction || record.groupStatusAction || record.groupDescriptionAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || initialMeetingChange(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
+  return record.sequence === 0 && Boolean(record.sourceNoteLink || record.seriesMembership || record.serviceOrderPlacement || record.serviceOrderStepPlacement || record.outlinePointPlacement || record.outlineSubpointMoves?.length || record.groupFlowStepPlacement || record.councilTopicPlacement || record.serviceOrderTitleAction || record.prayerTitleAction || record.prayerTextActions || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.studyNoteContentAction || record.studyNoteTypeAction || record.commentKindAction || record.commentPlaceAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonThesisFieldActions || record.sermonPreparationTextActions || record.sermonRepeatedWordsAction || record.sermonPlanModeAction || record.accountPreferenceActions || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.homileticTitleActions || record.homileticMoveActions || record.seriesFieldActions || record.hardQuestionFieldActions || record.groupTitleAction || record.groupStatusAction || record.groupDescriptionAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || initialMeetingChange(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
 }
 
 function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {
@@ -822,11 +825,11 @@ export class CommitQueue {
 
   /** Build from the exact chosen copy after retiring its answered predecessors. */
   choiceReplacement(editorId: string, intent: SessionCheckpoint,
-    options: { scratchTextRecovery?: true; scratchRemoval?: true; action?: EditorCommitAction; predecessor?: CommitRequest; commentTextOpening?: FieldValue; noteContent?: StudyNoteContentCapture; commentCompanions?: CommentCompanionProofs } = {}): CommitRequest | null {
+    options: { scratchTextRecovery?: true; scratchRemoval?: true; action?: EditorCommitAction; predecessor?: CommitRequest; commentTextOpening?: FieldValue; noteContent?: StudyNoteContentCapture; commentCompanions?: CommentCompanionProofs; retentionScope?: string } = {}): CommitRequest | null {
     if (!this.owner) throw new Error(AUTHENTICATION_REQUIRED);
-    const { action, predecessor, commentTextOpening, noteContent, commentCompanions, scratchRemoval, scratchTextRecovery } = options;
+    const { action, predecessor, commentTextOpening, noteContent, commentCompanions, scratchRemoval, scratchTextRecovery, retentionScope } = options;
     const replacement = this.buildRequest(this.owner, editorId, intent, [], predecessor, {
-      ...(action && { action }), noteContent: commentTextOpening ? null : noteContent, commentCompanions, scratchRemoval, scratchTextRecovery,
+      ...(action && { action }), noteContent: commentTextOpening ? null : noteContent, commentCompanions, scratchRemoval, scratchTextRecovery, retentionScope,
     });
     return replacement && { ...replacement, ...commentCompanions, ...(commentTextOpening && { commentTextOpening }) };
   }
@@ -1003,7 +1006,8 @@ export class CommitQueue {
     }
     const capturedMetadata = captureDocumentMetadataFields(baseline, predecessor, intent.draft, metadataTime, records,
       editorAction?.kind === 'account-preference' ? editorAction.fields : undefined,
-      headerReview, editorAction?.kind === 'document-metadata' ? editorAction.seriesFieldReview : undefined);
+      headerReview, editorAction?.kind === 'document-metadata' ? editorAction.seriesFieldReview : undefined,
+      editorAction?.kind === 'document-metadata' ? editorAction.hardQuestionFieldReview : undefined);
     const metadataFields = textRetry
       ? { ...capturedMetadata, ...capturedSermonTextRetry(textRetry,
         'sermonPreparationTextActions' in capturedMetadata ? capturedMetadata.sermonPreparationTextActions : undefined) }

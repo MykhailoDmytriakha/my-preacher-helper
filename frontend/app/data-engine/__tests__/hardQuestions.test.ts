@@ -69,6 +69,34 @@ describe('hard questions on the engine', () => {
     expect(() => validateResourceDocument('hardQuestions', question({ askedBy: 'Надежда' }), { kind: 'create' })).toThrow('Unknown field in new document');
   });
 
+  it.each([
+    ['hardQuestions', 'short', question()],
+    ['hardQuestionThemes', 'intro', theme({ intro: 'Opening introduction' })],
+  ] as const)('captures the manual Save time for %s %s', async (collection, field, value) => {
+    const resource = { collection, id: 'opened-hard-question' };
+    const h = documentEngineHarness({ resource, value, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false } });
+    const browser = h.createBrowser();
+    browser.engine.setOwner('owner');
+    browser.engine.setOnline(true);
+    const time = { earliestMs: 1_800_000_000_020, latestMs: 1_800_000_000_025 };
+    try {
+      const editor = await browser.engine.openEditor(resource, browser.editorId(resource));
+      const form = editor.form('authored-words', [[field]]);
+      await form.begin();
+      await form.update(current => ({ ...current, [field]: 'The new words' }));
+      await form.save(undefined, { documentMetadata: { time } });
+      await browser.engine.retry();
+      await settleEngine();
+      expect(h.transport.send).toHaveBeenCalledWith(expect.objectContaining({
+        kind: 'update', resource, hardQuestionFieldActions: { [field]: { observedRevision: 1, time } },
+      }));
+      expect(h.server.value?.[field]).toBe('The new words');
+    } finally {
+      browser.dispose();
+      await settleEngine();
+    }
+  });
+
   it('creates a question offline, keeps it across a restart and delivers it when the network returns', async () => {
     const resource = { collection: 'hardQuestions', id: 'offline-question' };
     const h = documentEngineHarness({ resource, value: null, metadata: null });

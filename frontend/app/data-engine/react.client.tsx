@@ -44,6 +44,7 @@ import { firstGroupMeetingReview } from './groupFirstMeeting';
 import { GROUP_MEETING_SLOT as groupMeetingAutosaveSlot, groupMeetingRows as meetingRows, normalizeGroupMeetingDraft as normalizeMeetingDraft } from './groupMeetingAutosave';
 import { captureGroupStepPlacement as captureGroupPlacement, projectCapturedGroupStep as projectGroupPlacement } from './groupStepPlacement';
 import { readGroupTextReview } from './groupTextReview';
+import { hardQuestionTextField } from './hardQuestionFieldAction';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
 import { ARCHIVED_COLLECTIONS, isEngineOwnedLegacyMutation, isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
 import { discoverLegacyRecovery as discoverLegacyOriginals, exportLegacyRecovery as exportLegacyOriginal, type LegacyRecoverySource } from './legacyRecovery.client';
@@ -202,6 +203,9 @@ export function readDocumentTagComparison(checkpoint: SessionCheckpoint) { retur
 export function readDocumentTextComparison(checkpoint: SessionCheckpoint) { return readDocumentTextChoice(checkpoint); }
 export const isChurchValue: typeof churchValue = churchValue;
 export function churchFieldWords(value: unknown): string | undefined { return churchWords(value); }
+export function hasHardQuestionTextConflict(checkpoint: SessionCheckpoint) {
+  return checkpoint.conflicts.some(({ path }) => hardQuestionTextField(checkpoint.confirmed.resource.collection, path));
+}
 export function seriesTextChoiceFields(...args: Parameters<typeof seriesChoice>) { return seriesChoice(...args); }
 export function prayerTextEditAction(...args: Parameters<typeof capturePrayerTextEdit>) { return capturePrayerTextEdit(...args); }
 export function readServiceOrderTitleConflict(...args: Parameters<typeof serviceOrderTitleConflict>) { return serviceOrderTitleConflict(...args); }

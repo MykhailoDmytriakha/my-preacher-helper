@@ -44,6 +44,7 @@ export function ThemeEditDialog({ themeId, onClose, recoverId }: { themeId: stri
   const resource = useMemo(() => ({ collection: 'hardQuestionThemes', id: themeId }), [themeId]);
   const engine = useEngineForm(resource, THEME_FORM_SLOT, THEME_FORM_FIELDS, t('hardQuestions.theme.editTitle'), recoverId);
   const { form } = engine;
+  const comparing = form.exactChoice && Boolean(form.comparison?.hardQuestionFields?.length);
   const [saving, setSaving] = useState(false);
   const theme = form.data ? readTheme(form.data, themeId) : null;
   const set = (field: 'title' | 'intro', value: string) => form.update((draft) => {
@@ -55,7 +56,7 @@ export function ThemeEditDialog({ themeId, onClose, recoverId }: { themeId: stri
   const close = () => { void (form.active ? form.cancel() : Promise.resolve()).then(onClose, () => undefined); };
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (saving || !theme?.title.trim()) return;
+    if (comparing || saving || !theme?.title.trim()) return;
     setSaving(true);
     try {
       await form.save((draft) => {
@@ -77,7 +78,7 @@ export function ThemeEditDialog({ themeId, onClose, recoverId }: { themeId: stri
   return (
     <FormDialog title={t('hardQuestions.theme.editTitle')} tone="rose" size="form" onClose={close} closeDisabled={saving} unsaved={form.dirty} showCloseButton onSubmit={submit}
       footer={<FormActions tone="rose" onCancel={close} cancelLabel={t('common.cancel')} submitLabel={t('common.save')} saving={saving}
-        submitDisabled={disabled || !theme?.title.trim()} unsaved={form.dirty} />}>
+        submitDisabled={disabled || comparing || !theme?.title.trim()} unsaved={form.dirty} />}>
       <EngineFormStatus {...engine} className="mb-4" />
       {theme && (
         <div className="flex flex-col gap-5">

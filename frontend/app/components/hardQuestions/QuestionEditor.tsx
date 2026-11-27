@@ -79,6 +79,7 @@ export function QuestionEditor({ questionId, bases, onDone, recoverId, gone = fa
   const resource = useMemo(() => ({ collection: 'hardQuestions', id: questionId }), [questionId]);
   const engine = useEngineForm(resource, QUESTION_FORM_SLOT, QUESTION_FORM_FIELDS, t('hardQuestions.question.editTitle'), recoverId);
   const { form } = engine;
+  const comparing = form.exactChoice && Boolean(form.comparison?.hardQuestionFields?.length);
   const { askBeforeDiscard, discardDialog } = useDiscardQuestion();
   const [saving, setSaving] = useState(false);
   const question = form.data ? readQuestion(form.data, questionId) : null;
@@ -86,7 +87,7 @@ export function QuestionEditor({ questionId, bases, onDone, recoverId, gone = fa
     form.update((draft) => withField(draft, field, value)).catch(() => undefined);
 
   const save = async () => {
-    if (saving || !question?.title.trim()) return;
+    if (comparing || saving || !question?.title.trim()) return;
     setSaving(true);
     try {
       await form.save(kept, form.captureDocumentMetadataAction());
@@ -175,7 +176,7 @@ export function QuestionEditor({ questionId, bases, onDone, recoverId, gone = fa
       )}
       <div className="sticky bottom-0 z-10 -mx-4 mt-8 flex flex-col-reverse gap-2 border-t border-gray-200 bg-white/95 px-4 py-3 backdrop-blur sm:mx-0 sm:flex-row sm:justify-end sm:rounded-b-2xl dark:border-gray-800 dark:bg-gray-900/95">
         <button type="button" onClick={cancel} className={SECONDARY_BUTTON}>{t('common.cancel')}</button>
-        <button type="submit" disabled={gone || saving || disabled || !question?.title.trim()} className={`${PRIMARY_BUTTON} sm:min-w-[9.5rem]`} aria-busy={saving}>
+        <button type="submit" disabled={gone || comparing || saving || disabled || !question?.title.trim()} className={`${PRIMARY_BUTTON} sm:min-w-[9.5rem]`} aria-busy={saving}>
           {saving ? t('common.saving') : t('common.save')}
         </button>
       </div>

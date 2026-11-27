@@ -1,4 +1,5 @@
-import { equalValues, readField, writeField } from './fieldValues';
+import { equalValues } from './fieldValues';
+import { orderedFieldChoiceFrames } from './orderedFieldChoiceFrames';
 
 import type { DocumentFieldObservation, DocumentFieldStamp } from './documentFieldAction';
 import type { ConflictDetail, DocumentData, FieldValue, ResourceSnapshot } from './types';
@@ -47,23 +48,13 @@ export function isReturnedSeriesField({ path, base, theirs, code }: ConflictDeta
 
 export function seriesReviewFrames(basis: ResourceSnapshot, reviewed: DocumentData | null, stored: ResourceSnapshot | null,
   conflicts: readonly ConflictDetail[]) {
-  if (basis.resource.collection !== 'series' || !basis.value || !reviewed || !stored?.value
-    || basis.metadata?.generation !== stored.metadata?.generation) return { basis, reviewed, conflicts };
-  let opening = basis.value;
-  let draft = reviewed;
-  const remaining = conflicts.filter(conflict => {
-    const { path, code } = conflict;
-    if (path.length !== 1 || (code !== SERIES_METADATA_SETTLED && code !== SERIES_METADATA_QUEUED)) return true;
+  if (basis.resource.collection !== 'series') return { basis, reviewed, conflicts };
+  return orderedFieldChoiceFrames(basis, reviewed, stored, conflicts, ({ code, path, mine, theirs }) => {
+    if (path.length !== 1 || (code !== SERIES_METADATA_SETTLED && code !== SERIES_METADATA_QUEUED)) return;
     const mirroredTitle = path[0] === 'theme' && conflicts.some(item => item.path.length === 1 && item.path[0] === 'title'
-      && item.code === code && equalValues(item.mine, conflict.mine) && equalValues(item.theirs, conflict.theirs));
-    if (!mirroredTitle && !SERIES_FIELD_TARGETS.some(({ field }) => field === path[0])) return true;
-    const mine = readField(draft, path);
-    const saved = readField(stored.value!, path);
-    if (equalValues(mine, saved)) return false;
-    if (!equalValues(mine, conflict.mine) || (code === SERIES_METADATA_QUEUED && !equalValues(saved, conflict.theirs))) return true;
-    if (code === SERIES_METADATA_SETTLED) draft = writeField(draft, path, readField(opening, path));
-    else opening = writeField(opening, path, saved);
-    return false;
+      && item.code === code && equalValues(item.mine, mine) && equalValues(item.theirs, theirs));
+    if (mirroredTitle || SERIES_FIELD_TARGETS.some(({ field }) => field === path[0])) {
+      return code === SERIES_METADATA_SETTLED ? 'settled' : 'queued';
+    }
   });
-  return { basis: { ...basis, value: opening }, reviewed: draft, conflicts: remaining };
 }

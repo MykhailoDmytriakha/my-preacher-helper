@@ -14,11 +14,10 @@ import {
 } from '@/components/hardQuestions/parts';
 import { QUESTION_FORM_FIELDS, QUESTION_FORM_SLOT, QuestionEditor } from '@/components/hardQuestions/QuestionEditor';
 import { ScripturePlaces } from '@/components/hardQuestions/ScripturePlaces';
-import { OrphanDraftWords, UnsavedDraftNotice, useRouteSegment } from '@/components/hardQuestions/useEngineForm';
+import { EngineReadingStatus, OrphanDraftWords, UnsavedDraftNotice, useRouteSegment } from '@/components/hardQuestions/useEngineForm';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { usePublishShellTitle } from '@/components/navigation/shellTitles';
 import { RecordUnavailable } from '@/components/RecordUnavailable';
-import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { DataDocumentProvider, useDataDocument } from '@/data-engine/react.client';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useHardQuestions } from '@/hooks/useHardQuestions';
@@ -139,8 +138,7 @@ function QuestionWorkspace({ questionId }: { questionId: string }) {
       <BackLink href={backHref}>{theme ? theme.title : t('hardQuestions.title')}</BackLink>
       {!editing && (
         <>
-          <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords} className="mt-3"
-            onRetry={document.retry} onKeepLocal={() => document.keepLocal()} onAcceptRemote={() => document.acceptRemote()} />
+          <EngineReadingStatus document={document} onReview={() => setEditing(true)} />
           {!document.readOnly && (
             <UnsavedDraftNotice resource={resource} slot={QUESTION_FORM_SLOT} selection={QUESTION_FORM_FIELDS}
               onResume={(draftId) => { setRecoverId(draftId); setEditing(true); }} />

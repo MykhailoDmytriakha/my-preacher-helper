@@ -3871,8 +3871,12 @@ export class DataEngine {
         const privateStage = shown.dirty && predecessor && predecessor.id !== request.id
           ? { scopeId: shown.record.scopeId, generation: shown.record.generation, predecessorId: predecessor.id, base: predecessor.value, value: shown.value }
           : undefined;
+        const hardQuestionFieldReview = comparison?.hardQuestionFields && {
+          fields: choice === 'local' ? comparison.hardQuestionFields : [], original: request.hardQuestionFieldActions ?? {},
+          scopeId: shown.record.scopeId,
+        };
         await controller.resolveExactManualChoice({ choice, titles, request, stored, value: exactManualWords(shown, request), selection, privateStage,
-          choiceTime: action?.kind === 'document-metadata' ? action.time : undefined }, () => {
+          hardQuestionFieldReview, choiceTime: action?.kind === 'document-metadata' ? action.time : undefined }, () => {
           active(); assertComparison();
           const current = scope.getState();
           const reviewed = exactRequest(current, controller.getState().checkpoint);
@@ -3880,7 +3884,9 @@ export class DataEngine {
             || current.record.generation !== shown.record.generation || !equalValues(current.value, shown.value)) throw Object.assign(new Error('The shown saved copy changed'), { code: 'decision-changed' });
         });
         active();
-        if (choice === 'local' || controller.getState().checkpoint.dirty) {
+        if (hardQuestionFieldReview) {
+          this.prepareCommitsInBackground(); this.backgroundDrain();
+        } else if (choice === 'local' || controller.getState().checkpoint.dirty) {
           const positionReview = request.result?.kind === 'conflict' ? reviewedHomileticList(
             request.result.conflicts.filter(conflict => conflict.code === HOMILETIC_POSITION_REVIEW || conflict.code === HOMILETIC_POSITION_PROJECTION), selection) : undefined;
           const keepSeriesDescription = stored.resource.collection === 'series' && comparison
@@ -3913,6 +3919,10 @@ export class DataEngine {
         const latest = scope.getState();
         if (latest.dirty && latest.record.generation !== shown.record.generation) {
           await scope.suspend();
+          return;
+        }
+        if (hardQuestionFieldReview) {
+          await scope.continueAfterChoice(capture(), request.id); active();
           return;
         }
         await scope.cancel(); active();
