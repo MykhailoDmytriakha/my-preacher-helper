@@ -38,6 +38,7 @@ const mockUseParams = useParams as jest.MockedFunction<typeof useParams>;
 describe('SharedNotePage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockFetch.mockReset();
     mockUseParams.mockReturnValue({ token: 'token-1' });
   });
 
@@ -50,6 +51,78 @@ describe('SharedNotePage', () => {
     render(<SharedNotePage />);
 
     expect(screen.getByText('common.loading')).toBeInTheDocument();
+  });
+
+  it('uses one public request when the page remounts during the guest session check', async () => {
+    let respond!: (response: unknown) => void;
+    const pending = new Promise(resolve => { respond = resolve; });
+    const json = jest.fn().mockResolvedValue({ content: 'The public words' });
+    mockFetch.mockReturnValueOnce(pending).mockReturnValueOnce(pending);
+
+    const first = render(<SharedNotePage />);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    first.unmount();
+    render(<SharedNotePage />);
+    const callsWhilePending = mockFetch.mock.calls.length;
+    await act(async () => respond({ ok: true, json }));
+
+    expect(await screen.findByTestId('markdown')).toHaveTextContent('The public words');
+    expect(callsWhilePending).toBe(1);
+    expect(json).toHaveBeenCalledTimes(1);
+  });
+
+  it('checks a public link again after a completed read so revocation is seen', async () => {
+    mockFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ content: 'First response' }) })
+      .mockResolvedValueOnce({ ok: false, status: 404 });
+
+    const first = render(<SharedNotePage />);
+    expect(await screen.findByTestId('markdown')).toHaveTextContent('First response');
+    first.unmount();
+    render(<SharedNotePage />);
+
+    expect(await screen.findByText('shareNotes.notFound')).toBeInTheDocument();
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps a late response for the first token out of the next public note', async () => {
+    let firstResponse!: (response: unknown) => void;
+    const firstRead = new Promise(resolve => { firstResponse = resolve; });
+    mockFetch.mockReturnValueOnce(firstRead);
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ content: 'Second note' }) });
+
+    const { rerender } = render(<SharedNotePage />);
+    mockUseParams.mockReturnValue({ token: 'token-2' });
+    rerender(<SharedNotePage />);
+    expect(await screen.findByTestId('markdown')).toHaveTextContent('Second note');
+
+    await act(async () => firstResponse({ ok: true, json: async () => ({ content: 'First note' }) }));
+    expect(screen.getByTestId('markdown')).toHaveTextContent('Second note');
+    expect(screen.queryByText('First note')).not.toBeInTheDocument();
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('lets a later visit replace a stalled read of the same public link', async () => {
+    jest.useFakeTimers();
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      mockFetch
+        .mockReturnValueOnce(new Promise(() => {}))
+        .mockResolvedValueOnce({ ok: true, json: async () => ({ content: 'A fresh response' }) });
+
+      const first = render(<SharedNotePage />);
+      await act(async () => { jest.advanceTimersByTime(15_000); });
+      expect(screen.getByText('shareNotes.error')).toBeInTheDocument();
+      expect(mockFetch.mock.calls[0][1].signal.aborted).toBe(true);
+      first.unmount();
+      render(<SharedNotePage />);
+
+      expect(await screen.findByTestId('markdown')).toHaveTextContent('A fresh response');
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    } finally {
+      errorSpy.mockRestore();
+      jest.useRealTimers();
+    }
   });
 
   it('does not fetch when token is missing', () => {

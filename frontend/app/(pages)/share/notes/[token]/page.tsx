@@ -11,6 +11,7 @@ import { resolveAppLocale } from '@/utils/appLocale';
 import { studyNoteLanguage } from '@/utils/documentLanguage';
 import { formatScriptureReferences } from '@/utils/scriptureReference';
 import { studyNoteOwnName } from '@/utils/studyNoteUtils';
+import { withinDeadline } from '@/utils/withinDeadline';
 import ThemeModeToggle from '@components/navigation/ThemeModeToggle';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -21,15 +22,55 @@ import type { ScriptureReference } from '@/models/models';
 const PAGE_CONTAINER_CLASS = 'min-h-screen bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-100';
 const CONTENT_WRAPPER_CLASS = 'mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-10 sm:px-6';
 
-type ShareNoteStatus = 'loading' | 'ready' | 'notFound' | 'unavailable' | 'error';
-
 // A study can gather forty passages; under the title they are a preview, not the index.
 const PASSAGE_PREVIEW = 6;
+// Match the application's existing deadline for a document detail request.
+const SHARE_READ_TIMEOUT_MS = 15_000;
 
 interface ShareNotePayload {
   content: string;
   title?: string;
   scriptureRefs?: ScriptureReference[];
+}
+
+type ShareNoteRead =
+  | { status: 'ready'; content: string; title?: string; scriptureRefs: ScriptureReference[] }
+  | { status: 'notFound' | 'unavailable' | 'error' };
+
+// The account provider replaces its workspace when identity becomes known. The public read can
+// start immediately and the new page can join it. A later opening goes back to the server.
+const pendingShareReads = new Map<string, Promise<ShareNoteRead>>();
+
+function requestSharedNote(token: string): Promise<ShareNoteRead> {
+  const pending = pendingShareReads.get(token);
+  if (pending) return pending;
+
+  const controller = new AbortController();
+  const request = withinDeadline<ShareNoteRead>(async () => {
+    const response = await fetch(`/api/share/notes/${encodeURIComponent(token)}`, {
+      cache: 'no-store', signal: controller.signal,
+    });
+    if (response.status === 404) return { status: 'notFound' };
+    if (response.status === 503) return { status: 'unavailable' };
+    if (!response.ok) return { status: 'error' };
+
+    const payload = (await response.json()) as ShareNotePayload;
+    return {
+      status: 'ready',
+      content: payload.content || '',
+      title: payload.title?.trim() || undefined,
+      scriptureRefs: Array.isArray(payload.scriptureRefs) ? payload.scriptureRefs : [],
+    };
+  }, performance.now() + SHARE_READ_TIMEOUT_MS, () => {
+    controller.abort();
+    return new Error('Shared note request timed out');
+  });
+  pendingShareReads.set(token, request);
+  const retire = () => {
+    if (pendingShareReads.get(token) === request) pendingShareReads.delete(token);
+  };
+  void request.then(retire, retire);
+  return request;
 }
 
 export default function SharedNotePage() {
@@ -40,10 +81,13 @@ export default function SharedNotePage() {
   const params = useParams<{ token?: string }>();
   const token = params?.token;
 
-  const [status, setStatus] = useState<ShareNoteStatus>('loading');
-  const [content, setContent] = useState('');
-  const [title, setTitle] = useState<string | undefined>(undefined);
-  const [scriptureRefs, setScriptureRefs] = useState<ScriptureReference[]>([]);
+  const [loaded, setLoaded] = useState<{ token: string; result: ShareNoteRead } | null>(null);
+  const result = loaded && loaded.token === token ? loaded.result : undefined;
+  const status = result?.status ?? 'loading';
+  const note = result?.status === 'ready' ? result : undefined;
+  const content = note?.content ?? '';
+  const title = note?.title;
+  const scriptureRefs = note?.scriptureRefs ?? [];
 
   // The link's preview card names the note the way every screen does (title, else first passage);
   // the page opened from that card shows the same name above the text, or the card promised
@@ -67,36 +111,16 @@ export default function SharedNotePage() {
   useEffect(() => {
     if (!token) return;
 
-    const load = async () => {
-      try {
-        setStatus('loading');
-        const response = await fetch(`/api/share/notes/${token}`, { cache: 'no-store' });
-        if (response.status === 404) {
-          setStatus('notFound');
-          return;
-        }
-        // The server is there but cannot read the note now (the database's daily quota spent):
-        // the link is fine, it is the moment that is wrong (BUG-20261019-routes-hang-when-store-refuses).
-        if (response.status === 503) {
-          setStatus('unavailable');
-          return;
-        }
-        if (!response.ok) {
-          setStatus('error');
-          return;
-        }
-        const payload = (await response.json()) as ShareNotePayload;
-        setContent(payload.content || '');
-        setTitle(payload.title?.trim() || undefined);
-        setScriptureRefs(Array.isArray(payload.scriptureRefs) ? payload.scriptureRefs : []);
-        setStatus('ready');
-      } catch (error) {
-        console.error('Failed to load shared note', error);
-        setStatus('error');
-      }
-    };
-
-    load();
+    let active = true;
+    setLoaded(null);
+    void requestSharedNote(token).then(result => {
+      if (active) setLoaded({ token, result });
+    }, error => {
+      if (!active) return;
+      console.error('Failed to load shared note', error);
+      setLoaded({ token, result: { status: 'error' } });
+    });
+    return () => { active = false; };
   }, [token]);
 
   // As in the app, the Scripture in the note is a link that opens the passage over the page (the owner,
