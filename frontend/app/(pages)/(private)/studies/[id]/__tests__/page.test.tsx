@@ -19,6 +19,7 @@ let mockAiFeedbackText: string | undefined;
 const mockRecordingRows = new Map<string, unknown>();
 const mockAuthState: { user: { uid: string } | null; loading: boolean } = { user: { uid: 'user-1' }, loading: false };
 let mockRealEditor = false;
+let mockMarkdownParagraphs = false;
 jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => mockAuthState }));
 jest.mock('idb-keyval', () => ({
   createStore: jest.fn(() => ({})),
@@ -158,7 +159,8 @@ jest.mock('@/services/firebaseAuth.service', () => ({
 // Mock components to avoid deep rendering issues in this test
 jest.mock('@components/MarkdownDisplay', () => ({
     __esModule: true,
-    default: ({ content }: { content: string }) => <div data-testid="markdown-display">{content}</div>,
+    default: ({ content }: { content: string }) => <div data-testid="markdown-display">{mockMarkdownParagraphs
+        ? content.split('\n\n').map((paragraph, index) => <p key={index}>{paragraph}</p>) : content}</div>,
 }));
 
 jest.mock('react-textarea-autosize', () => ({
@@ -277,6 +279,36 @@ describe('StudyNoteEditorPage Pagination', () => {
             loading: false,
             deleteShareLink: jest.fn(),
         });
+    });
+
+    it('opens a heading-free note in reading mode at the paragraph already at the reading line', () => {
+        const paragraphs = ['First paragraph', 'Middle paragraph', 'Last paragraph'];
+        const previous = (useStudyNotes as jest.Mock)();
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            ...previous,
+            notes: mockNotes.map(note => note.id === 'note-1' ? { ...note, content: paragraphs.join('\n\n') } : note),
+        });
+        const geometry = jest.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+            const reading = this.closest('[data-testid="note-reading-view"]');
+            const index = this.tagName === 'P' ? paragraphs.indexOf(this.textContent ?? '') : -1;
+            const top = index >= 0
+                ? (reading ? 450 + index * 280 : [-24, 108, 184][index])
+                : reading ? 56 : 100;
+            const height = index >= 0 ? 40 : 800;
+            return { x: 0, y: top, top, bottom: top + height, left: 0, right: 500, width: 500, height, toJSON: () => ({}) };
+        });
+        mockMarkdownParagraphs = true;
+        try {
+            render(<StudyNoteEditorPage />);
+            fireEvent.click(screen.getByRole('button', { name: 'notePanel.readingMode' }));
+            const reader = screen.getByTestId('note-reading-view');
+            const scroll = reader.querySelector('article')!.parentElement!.parentElement!;
+            expect(scroll.scrollTop).toBeGreaterThan(600);
+            expect(scroll.scrollTop).toBeLessThan(700);
+        } finally {
+            mockMarkdownParagraphs = false;
+            geometry.mockRestore();
+        }
     });
 
     it.each([false, true])('keeps the departing owners last keystroke without replacing a different stored draft: otherDraft=%s', otherDraft => {

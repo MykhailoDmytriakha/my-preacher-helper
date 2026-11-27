@@ -2,7 +2,7 @@
 
 import { ChevronDownIcon, ChevronUpIcon } from '@heroicons/react/24/outline';
 import { Glasses } from 'lucide-react';
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { ReaderSheet } from '@/components/bible/ReaderSheet';
@@ -20,6 +20,7 @@ import { useModalLayer } from '@/hooks/useModalLayer';
 import { useSectionProgress } from '@/hooks/useSectionProgress';
 import { useVisibleScriptureReferences } from '@/hooks/useVisibleScriptureReferences';
 import { sectionDisplayLabel } from '@/utils/markdownSections';
+import { restoreNoteReadingBlock, type NoteReadingStart } from '@/utils/noteReadingAnchor';
 import { placeShown, versesPreview } from '@/utils/placeText';
 import { sameScriptureReference } from '@/utils/scriptureReferenceNumbering';
 import { useTranslation } from '@locales/useTranslation';
@@ -92,8 +93,8 @@ export function NoteReadingView({
     outline: MarkdownOutlineControl;
     /** The language the note is written in, for finding its Scripture references (the page's `readingLanguage`). */
     writtenIn: AppLocale | null;
-    /** The section being read on the page when the mode opened: reading goes on from there. */
-    startAt: string | null;
+    /** The reading position captured from the note before the mode opens. */
+    startAt: NoteReadingStart | null;
     pager: ReadingPager | null;
     onOpenReference: (reference: SheetReference) => void;
     onClose: () => void;
@@ -158,16 +159,19 @@ export function NoteReadingView({
 
     // Reading goes on from where it was on the page.
     const started = useRef(false);
-    useEffect(() => {
-        if (!scrollRoot || started.current) return;
+    useLayoutEffect(() => {
+        if (!scrollRoot || !textRoot || started.current) return;
         started.current = true;
         if (!startAt) return;
-        const at = scrollRoot.querySelector<HTMLElement>(`[data-section-id="${startAt}"]`)
-            ?? scrollRoot.querySelector<HTMLElement>(`[data-section-id="${startAt.split('.')[0]}"]`);
+        if (startAt.block && restoreNoteReadingBlock(scrollRoot, textRoot, startAt.block, 16)) return;
+        const sectionId = startAt.sectionId;
+        if (!sectionId) return;
+        const at = scrollRoot.querySelector<HTMLElement>(`[data-section-id="${sectionId}"]`)
+            ?? scrollRoot.querySelector<HTMLElement>(`[data-section-id="${sectionId.split('.')[0]}"]`);
         if (!at) return;
         at.scrollIntoView({ block: 'start' });
-        pin(startAt);
-    }, [scrollRoot, startAt, pin]);
+        pin(sectionId);
+    }, [scrollRoot, textRoot, startAt, pin]);
 
     // The places' words, in the Bible the verse window opens (`readTranslation`), fetched only where the margin is
     // drawn: a phone has no column to fill.

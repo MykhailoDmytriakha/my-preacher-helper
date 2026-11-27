@@ -60,6 +60,7 @@ import { studyNoteLanguage } from '@/utils/documentLanguage';
 import { listReadState } from '@/utils/listReadState';
 import { sectionDisplayLabel, findSectionById } from '@/utils/markdownSections';
 import { findNoteDraftCopies } from '@/utils/newNoteDrafts';
+import { noteReadingBlockAtLine, type NoteReadingStart } from '@/utils/noteReadingAnchor';
 import { awaitAcceptance } from '@/utils/recoverableWrite';
 import { formatScriptureReference, studyNoteSearchText } from '@/utils/scriptureReference';
 import { sameScriptureReference, withNoteReferenceBibles } from '@/utils/scriptureReferenceNumbering';
@@ -898,9 +899,10 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
     // ─── PAGINATION LOGIC ──────────────────────────────────────────────────
     const searchParams = useSearchParams();
     // The reading mode, «the map in the margins»: the note alone, its outline and its verses in the margins (`NoteReadingView`).
-    // `readingStart` is the section being read on the page at the moment the mode opened: reading goes on from there.
+    // Capture the page's reading position before opening and locking the reading layer.
     const [reading, setReading] = useState(false);
-    const [readingStart, setReadingStart] = useState<string | null>(null);
+    const [readingStart, setReadingStart] = useState<NoteReadingStart | null>(null);
+    const noteTextRef = useRef<HTMLDivElement>(null);
     // The page is built again for every note: turning to the next note from inside the mode hands the mode on
     // (`handReadingTo`), and the next page opens in it once. History and the address keep nothing of it, so Back
     // to a note read earlier opens that note as a page, and the header's own paging stays plain.
@@ -1446,7 +1448,15 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                 prevNoteId={prevNoteId} nextNoteId={nextNoteId} router={router} searchParams={searchParams}
                 currentIndex={currentIndex} type={type} setType={changeType} isSaving={isSaving}
                 lastSaved={lastSaved} hasUnsavedEdits={editorIsDirty || !noteIsAccepted} setIsEditing={changeEditing} handleDelete={handleDelete}
-                handleCopy={handleCopy} isCopied={isCopied} onRead={() => { setReadingStart(sectionAtLine(scrollLayout.activeOffset, scrollLayout.activeRoot) ?? activeSectionId); setReading(true); }}
+                handleCopy={handleCopy} isCopied={isCopied} onRead={() => {
+                    const { activeRoot, activeOffset } = scrollLayout;
+                    const line = (activeRoot?.getBoundingClientRect().top ?? 0) + activeOffset;
+                    setReadingStart({
+                        block: noteReadingBlockAtLine(noteTextRef.current, line),
+                        sectionId: sectionAtLine(activeOffset, activeRoot) ?? activeSectionId,
+                    });
+                    setReading(true);
+                }}
                 headerRef={setHeaderRef} stickyTop={scrollLayout.headerTop}
                 roomy={roomyHeader} collapsed={headerCollapsed} sectionLabel={sectionLabel}
                 onOpenSheet={propertiesInSheet ? openSheet : undefined}
@@ -1549,7 +1559,7 @@ function NoteEditor({ openingDraftId, openingRecoveryKey }: { openingDraftId: st
                             />
                         </div>
                     ) : (
-                        <div className="prose prose-emerald dark:prose-invert prose-headings:text-gray-900 dark:prose-headings:text-gray-50 prose-p:text-gray-800 dark:prose-p:text-gray-200 prose-p:leading-relaxed max-w-none text-lg md:text-xl prose-scaled">
+                        <div ref={noteTextRef} className="prose prose-emerald dark:prose-invert prose-headings:text-gray-900 dark:prose-headings:text-gray-50 prose-p:text-gray-800 dark:prose-p:text-gray-200 prose-p:leading-relaxed max-w-none text-lg md:text-xl prose-scaled">
                             <ScriptureLinks onOpen={openTextReference} writtenIn={readingLanguage}>
                                 <FoldableMarkdown
                                     content={content}

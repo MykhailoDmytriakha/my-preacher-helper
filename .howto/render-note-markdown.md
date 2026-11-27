@@ -68,6 +68,12 @@ See also: `.howto/extend-tiptap-editor.md`
 - Test references in headings and bodies, forward/backward/repeated use, one footer, independent same-label documents, ordinary folding/shared controls, literal code/callouts and source extras. Browser acceptance includes an actual jump/back, reload, warmed-offline reading and the source-card consumer; jsdom alone does not prove layout or a native scroll.
 
 
+## Open reading mode at the current block
+
+The page captures the current visible Markdown block before the reading modal locks any scroll owner. Use the same reading line as the page outline, with pane coordinates on a wide screen and the sticky-header offset on a narrow screen. The ordinary page and the modal both render `FoldableMarkdown`, so the markup order, tag and exact text can identify a block even when repeated paragraphs wrap differently. Restore the relative offset within that block only in the modal's scroller. Let the section jump handle a missing match, and keep the top when there is no current block or section.
+
+In a real browser, scroll a plain long note to a numbered paragraph, open the glasses view, and check that the same paragraph remains near the top. Confirm the original page returns to its scroll position on Escape. Repeat with a heading and with the window as the source scroller. The note pager still opens a different note from its beginning.
+
 ## Follow visible Scripture links in reading mode
 
 Read the actual reference markers rendered by `ScriptureLinks`. `useVisibleScriptureReferences` observes them in the note-reading scroller. Native intersection includes clipping by a nested Markdown table. Require positive visible area and a small positive threshold so the transition from touching an edge to showing text produces another observation. Observe marker and child changes only within the text and reuse the parsed references for unchanged nodes. Keep document order and deduplicate equivalent references. [W3C intersection calculation](https://www.w3.org/TR/intersection-observer/#calculate-intersection-rect-algo).
