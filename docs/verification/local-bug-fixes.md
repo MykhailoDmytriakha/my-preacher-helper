@@ -9757,6 +9757,11 @@ On local production build `-Kr0Nv3Vko2F4EGEDMpEP`, headless Chrome at 390 and 12
 
 After authorized deployment, use a disposable note in a dedicated test account. Dictate a short sentence and immediately type another. Check both Undo/Redo steps, press Done and reopen. A separately timed test covers dictation arriving in the same render as typing.
 
+The old shared editor fix did not supply the boundary to the current note's own editor. At `54cd47890`, mounted tests reproduced the first Undo erasing the inserted words along with later typing, for both an append and a recovered replacement. The current note now closes the history group after both actions, with a transaction that does not edit or scroll the document. The latest mounted tests verify the three separate Undo and Redo steps before, during and after the action.
+
+On the production-mode local build, hidden Chrome at 390 and 1280 px recorded with a fake microphone and a local transcript. The immediately following typing and the dictation used the same history timestamp. Three Undos and three Redos moved through the three actions separately. The final words remained after Done and reload. All 147 focused tests passed, as did TypeScript, the build and scoped ESLint. Reports, screenshots and the port check are in `artifacts/owned-note-undo-20261126`.
+
+
 ## BUG-20261114-note-dictation-hidden-when-batched-with-typing · Show and save transcription with the latest typed text
 
 Studies → a note → Edit → New Recording, and the legacy Edit Thought form. Two mounted regressions supplied keyboard input and two transcription callbacks before the next React render. The old editor showed only the typed words. It then stored a later keyboard edit without the hidden paragraphs in the in-process note server, or sent it to the legacy thought Save handler without them.

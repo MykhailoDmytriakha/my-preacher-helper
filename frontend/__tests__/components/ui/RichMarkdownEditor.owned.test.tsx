@@ -52,11 +52,11 @@ it('makes append its own undoable step, keeps selection and scroll, and emits no
   const typed = markdown();
   const caret = mockEditor.state.selection.toJSON();
   const updates = jest.fn(); mockEditor.on('update', updates);
-  const scrolls: boolean[] = [];
-  mockEditor.on('transaction', ({ transaction }) => scrolls.push(transaction.scrolledIntoView));
+  const transactions: { changed: boolean; scrolled: boolean }[] = [];
+  mockEditor.on('transaction', ({ transaction }) => transactions.push({ changed: transaction.docChanged, scrolled: transaction.scrolledIntoView }));
   act(() => result.current.append('**Voice**\n\nAnother block'));
   expect(updates).not.toHaveBeenCalled();
-  expect(scrolls).toEqual([false]);
+  expect(transactions).toEqual([{ changed: true, scrolled: false }, { changed: false, scrolled: false }]);
   expect(mockEditor.state.selection.toJSON()).toEqual(caret);
   expect(caret).not.toEqual(selection);
   expect(markdown()).toBe(typed + '\n\n**Voice**\n\nAnother block');
@@ -71,6 +71,34 @@ it('makes append its own undoable step, keeps selection and scroll, and emits no
   expect(updates).toHaveBeenCalledTimes(2);
   act(() => { mockEditor.commands.undo(); });
   expect(result.current.live()).toBe('Arrival');
+});
+
+it.each(['dictation append', 'recovered replacement'] as const)('undoes typing separately on both sides of an owned %s', action => {
+  const opening = 'First note sentence.';
+  const { result } = renderHook(() => useEditorOwnedText(opening));
+  render(<RichMarkdownEditor ownedBy={result.current.ownedBy} />);
+  const type = (text: string) => act(() => {
+    mockEditor.view.dispatch(mockEditor.state.tr.insertText(text, mockEditor.state.doc.content.size - 1));
+  });
+  type(' Typed before.');
+  const beforeAction = opening + ' Typed before.';
+  expect(markdown()).toBe(beforeAction);
+  act(() => {
+    if (action === 'dictation append') result.current.append('Dictated block.');
+    else result.current.replace('The explicitly recovered version.');
+  });
+  const own = action === 'dictation append' ? beforeAction + '\n\nDictated block.' : 'The explicitly recovered version.';
+  expect(markdown()).toBe(own);
+  type(' Typed after.');
+  expect(markdown()).toBe(own + ' Typed after.');
+  const undo = () => act(() => { expect(mockEditor.commands.undo()).toBe(true); });
+  const redo = () => act(() => { expect(mockEditor.commands.redo()).toBe(true); });
+  undo(); expect(markdown()).toBe(own);
+  undo(); expect(markdown()).toBe(beforeAction);
+  undo(); expect(markdown()).toBe(opening);
+  redo(); expect(markdown()).toBe(beforeAction);
+  redo(); expect(markdown()).toBe(own);
+  redo(); expect(markdown()).toBe(own + ' Typed after.');
 });
 
 it('preserves raw unsupported source on append until a real editor emission', () => {

@@ -8,11 +8,12 @@ import type { OwnedTextDocument } from './useEditorOwnedText';
 import type { Editor } from '@tiptap/core';
 import type { Node as DocumentNode } from '@tiptap/pm/model';
 
-/** The same own replacement is used by owned and legacy editors. */
+/** Keep an explicit replacement separate from the typing on either side. */
 export function replaceOwnContent(editor: Editor, value: string): void {
   editor.chain()
     .command(({ tr }) => { closeHistory(tr).setMeta('addToHistory', true); return true; })
     .setContent(value, { emitUpdate: false }).run();
+  editor.view.dispatch(closeHistory(editor.state.tr));
 }
 
 interface PendingArrival {
@@ -150,6 +151,7 @@ export function ownedTextDocument(editor: Editor) {
             : Selection.fromJSON(tr.doc, selection.toJSON()));
         tr.setStoredMarks(state.storedMarks);
         editor.view.dispatch(tr);
+        editor.view.dispatch(closeHistory(editor.state.tr));
       }
       if (pending) {
         pending.appendHistory?.set(markdown.getMarkdown(), value);
