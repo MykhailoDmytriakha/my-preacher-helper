@@ -11,7 +11,7 @@ type Row = { resource: { collection: string; id: string }; value: Record<string,
 let mockRows: Record<string, Row[]> = {};
 const mockCreate = jest.fn((_resource: unknown, _value: unknown) => Promise.resolve());
 const mockRemove = jest.fn((_resource: unknown) => Promise.resolve());
-const mockCommit = jest.fn((_resource: unknown, _updater: (current: Record<string, unknown> | null) => unknown) => Promise.resolve());
+const mockCommit = jest.fn((_resource: unknown, _updater: (current: Record<string, unknown> | null) => unknown, _action?: unknown) => Promise.resolve());
 let mockIds = 0;
 let mockThemesComplete = true;
 
@@ -23,7 +23,7 @@ jest.mock('@/data-engine/react.client', () => ({
     loading: false,
     state: collection ? { documents: mockRows[collection] ?? [], complete: collection === 'hardQuestionThemes' ? mockThemesComplete : true } : null,
   }),
-  useDocumentActions: () => ({ ready: true, create: mockCreate, remove: mockRemove, commit: mockCommit }),
+  useDocumentActions: () => ({ ready: true, create: mockCreate, remove: mockRemove, commit: mockCommit, captureActionTime: () => ({ earliestMs: 100, latestMs: 110 }) }),
 }));
 
 const theme = (id: string, rank: number, extra: Record<string, unknown> = {}): Row => ({
@@ -158,6 +158,21 @@ describe('useHardQuestions', () => {
     const { result } = renderHook(() => useHardQuestions());
     await act(async () => { await expect(result.current.placeQuestion('q1', 'removed-theme', undefined)).rejects.toThrow(); });
     expect(mockCommit).not.toHaveBeenCalled();
+  });
+
+  it('refuses to replace a selected missing group with no group', async () => {
+    const { result } = renderHook(() => useHardQuestions());
+    await act(async () => { await expect(result.current.placeQuestion('q1', 'clothes', 'removed-group')).rejects.toThrow(); });
+    expect(mockCommit).not.toHaveBeenCalled();
+  });
+
+  it('passes the exact displayed place and revision to the queued move', async () => {
+    const { result } = renderHook(() => useHardQuestions());
+    const opening = { place: { themeId: 'clothes', groupId: 'g1', rank: 1000 }, observedRevision: 3 };
+    await act(async () => { await result.current.placeQuestion('q1', 'clothes', 'g2', opening); });
+    expect(mockCommit.mock.calls[0][2]).toMatchObject({
+      kind: 'document-metadata', time: { earliestMs: 100, latestMs: 110 }, hardQuestionPlacementOpening: opening,
+    });
   });
 
   it('refuses to change a question deleted meanwhile, instead of writing it back', async () => {

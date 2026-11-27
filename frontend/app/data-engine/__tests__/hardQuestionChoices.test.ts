@@ -359,9 +359,14 @@ it('replays two offline Saves against an independently added first list entry', 
 it('does not merge old basis links into a question now in a different theme', async () => {
   const db = installWorldFirestore(() => origin + 250);
   db.documents.set(`${resource.collection}/${resource.id}`, { ...opening, themeId: 'old-theme', _dataEngine: snapshot.metadata });
+  db.documents.set('hardQuestionThemes/new-theme', { userId: owner, title: 'New theme', rank: 1000,
+    createdAt: opening.createdAt, updatedAt: opening.updatedAt,
+    bases: [{ id: 'new-basis', title: 'Basis of the new theme', scriptureRefs: ['John 3:16'] }], _dataEngine: snapshot.metadata });
   const update = { protocol: 1, owner, resource, generation: 'g', dependsOn: [], kind: 'update' } as const;
   expect(await processCommand(owner, { ...update, dependsOn: [], operationId: 'new-theme', changes: [
     { path: ['themeId'], before: { exists: true, value: 'old-theme' }, after: { exists: true, value: 'new-theme' } },
+  ] })).toMatchObject({ kind: 'acknowledged' });
+  expect(await processCommand(owner, { ...update, operationId: 'link-new-basis', changes: [
     { path: ['basisIds'], before: exactWords([]), after: exactWords(['new-basis']) },
   ] })).toMatchObject({ kind: 'acknowledged' });
   expect(await processCommand(owner, { ...update, dependsOn: [], operationId: 'old-basis', changes:

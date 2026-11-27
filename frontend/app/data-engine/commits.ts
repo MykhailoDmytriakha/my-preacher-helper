@@ -37,6 +37,7 @@ import { captureMeetingFieldActions, GROUP_MEETING_FIELD_POLICY, matchingMeeting
 import { groupMeetingReviewForSave } from './groupMeetingReview';
 import { groupStepPlacementPredecessor, groupStepWitness, projectGroupStepOnDocument } from './groupStepPlacement';
 import { captureHardQuestionBasisFields, HARD_QUESTION_BASIS_POLICY } from './hardQuestionBasisFields';
+import { captureHardQuestionPlacement, matchesHardQuestionPlacement, projectHardQuestionPlace, type HardQuestionPlacement } from './hardQuestionPlacement';
 import { captureHomileticMoves, captureHomileticTitles, matchingHomileticMoves, matchingHomileticPositionReviews, matchingHomileticTitles, restoreHomileticOpenings } from './homileticPlanCapture';
 import { seriesCommandParticipant } from './membershipIntent';
 import { outlinePlacementField } from './outlinePlacementResource';
@@ -202,6 +203,7 @@ export interface CommitRequest extends CouncilFieldActions, PrayerStatusObservat
   seriesFieldActions?: SeriesFieldObservations;
   hardQuestionFieldActions?: HardQuestionFieldObservations;
   hardQuestionBasisFieldActions?: HardQuestionBasisActions;
+  hardQuestionPlacement?: HardQuestionPlacement;
   prayerTextActions?: PrayerTextObservations;
   groupTitleAction?: DocumentFieldObservation;
   groupStatusAction?: DocumentFieldObservation;
@@ -366,6 +368,7 @@ export function assertCommitCapture(current: CommitRequest, incoming: CommitRequ
     || !equalValues(current.seriesFieldActions ?? null, incoming.seriesFieldActions ?? null)
     || !equalValues(current.hardQuestionFieldActions ?? null, incoming.hardQuestionFieldActions ?? null)
     || !equalValues(current.hardQuestionBasisFieldActions ?? null, incoming.hardQuestionBasisFieldActions ?? null)
+    || !equalValues(current.hardQuestionPlacement ?? null, incoming.hardQuestionPlacement ?? null)
     || !equalValues(current.seriesMembership ?? null, incoming.seriesMembership ?? null)
     || !equalValues(current.groupTitleAction ?? null, incoming.groupTitleAction ?? null)
     || !equalValues(current.groupStatusAction ?? null, incoming.groupStatusAction ?? null)
@@ -507,7 +510,7 @@ function initialMeetingChange(record: CommitRequest): FieldChange | undefined {
 }
 
 export function hasTimedAncestor(record: CommitRequest): boolean {
-  return record.sequence === 0 && Boolean(record.sourceNoteLink || record.seriesMembership || record.serviceOrderPlacement || record.serviceOrderStepPlacement || record.outlinePointPlacement || record.outlineSubpointMoves?.length || record.groupFlowStepPlacement || record.councilTopicPlacement || record.serviceOrderTitleAction || record.prayerTitleAction || record.prayerTextActions || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.studyNoteContentAction || record.studyNoteTypeAction || record.commentKindAction || record.commentPlaceAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonThesisFieldActions || record.sermonPreparationTextActions || record.sermonRepeatedWordsAction || record.sermonPlanModeAction || record.accountPreferenceActions || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.homileticTitleActions || record.homileticMoveActions || record.seriesFieldActions || record.hardQuestionFieldActions || record.groupTitleAction || record.groupStatusAction || record.groupDescriptionAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || initialMeetingChange(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
+  return record.sequence === 0 && Boolean(record.sourceNoteLink || record.seriesMembership || record.serviceOrderPlacement || record.serviceOrderStepPlacement || record.outlinePointPlacement || record.outlineSubpointMoves?.length || record.groupFlowStepPlacement || record.councilTopicPlacement || record.serviceOrderTitleAction || record.prayerTitleAction || record.prayerTextActions || record.planTemplateNameAction || record.tagColorAction || record.studyNoteTitleAction || record.studyNoteContentAction || record.studyNoteTypeAction || record.commentKindAction || record.commentPlaceAction || record.prayerStatusAction || record.prayerAnsweredAtAction || record.sermonTitleAction || record.sermonVerseAction || record.sermonChurchAction || record.sermonGoalTypeAction || record.sermonThesisFieldActions || record.sermonPreparationTextActions || record.sermonRepeatedWordsAction || record.sermonPlanModeAction || record.accountPreferenceActions || record.sermonPreparationCheckActions || record.exegeticalPlanActions?.length || record.homileticTitleActions || record.homileticMoveActions || record.seriesFieldActions || record.hardQuestionFieldActions || record.hardQuestionPlacement || record.groupTitleAction || record.groupStatusAction || record.groupDescriptionAction || record.councilTitleAction || record.councilDateAction || record.councilLifecycleAction || pendingBibleMarkRebase(record) || initialMeetingChange(record) || pendingMeetingDateRebase(record) || pendingDocumentTags(record).length || pendingRowFields(record).length || pendingPreachStatusActions(record).length);
 }
 
 function freezeSaveOptions(options: CommitSaveOptions | undefined): CommitSaveOptions | undefined {
@@ -869,7 +872,8 @@ export class CommitQueue {
     const topicKind = editorAction?.kind === 'council-topic-kind' ? editorAction.topicKind : undefined;
     const confirmQuestionList = editorAction?.kind === 'document-metadata' && editorAction.hardQuestionFieldReview?.confirmedLists;
     const confirmBasisFields = editorAction?.kind === 'document-metadata' && editorAction.hardQuestionBasisReview?.fields.length;
-    if (!confirmBasisFields && !confirmQuestionList && !step && !assembly && !topicKind && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'service-order-placement' && editorAction?.kind !== 'service-order-step-placement' && editorAction?.kind !== 'outline-point-placement' && editorAction?.kind !== 'outline-subpoint-placement' && editorAction?.kind !== 'group-flow-step-placement' && editorAction?.kind !== 'council-topic-placement' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'prayer-text' && editorAction?.kind !== 'study-note-title' && editorAction?.kind !== 'study-note-type' && editorAction?.kind !== 'sermon-plan-mode' && editorAction?.kind !== 'comment-kind' && editorAction?.kind !== 'comment-place' && editorAction?.kind !== 'document-tags' && editorAction?.kind !== 'plan-template-name' && editorAction?.kind !== 'tag-color' && editorAction?.kind !== 'prayer-status' && editorAction?.kind !== 'sermon-source-note-links'
+    const confirmQuestionPlacement = editorAction?.kind === 'document-metadata' && editorAction.hardQuestionPlacementReviewed;
+    if (!confirmQuestionPlacement && !confirmBasisFields && !confirmQuestionList && !step && !assembly && !topicKind && editorAction?.kind !== 'service-order-title' && editorAction?.kind !== 'service-order-placement' && editorAction?.kind !== 'service-order-step-placement' && editorAction?.kind !== 'outline-point-placement' && editorAction?.kind !== 'outline-subpoint-placement' && editorAction?.kind !== 'group-flow-step-placement' && editorAction?.kind !== 'council-topic-placement' && editorAction?.kind !== 'prayer-title' && editorAction?.kind !== 'prayer-text' && editorAction?.kind !== 'study-note-title' && editorAction?.kind !== 'study-note-type' && editorAction?.kind !== 'sermon-plan-mode' && editorAction?.kind !== 'comment-kind' && editorAction?.kind !== 'comment-place' && editorAction?.kind !== 'document-tags' && editorAction?.kind !== 'plan-template-name' && editorAction?.kind !== 'tag-color' && editorAction?.kind !== 'prayer-status' && editorAction?.kind !== 'sermon-source-note-links'
       && !commentCompanions?.commentKindAction && !commentCompanions?.commentPlaceAction
       && !frozenOptions?.transfer && !frozenOptions?.noteContent && !intent.dirty && (!predecessor || equalValues(predecessor.value, intent.draft))) return null;
     const baseline = clone(intent.confirmed);
@@ -1015,6 +1019,9 @@ export class CommitQueue {
       editorAction?.kind === 'account-preference' ? editorAction.fields : undefined,
       headerReview, editorAction?.kind === 'document-metadata' ? editorAction.seriesFieldReview : undefined,
       editorAction?.kind === 'document-metadata' ? editorAction.hardQuestionFieldReview : undefined);
+    const hardQuestionPlacement = captureHardQuestionPlacement(baseline, predecessor ? predecessor.value : baseline.value,
+      intent.draft, metadataTime, predecessor?.hardQuestionPlacement && { id: predecessor.id, move: predecessor.hardQuestionPlacement },
+      confirmQuestionPlacement || undefined, editorAction?.kind === 'document-metadata' ? editorAction.hardQuestionPlacementOpening : undefined);
     const hardQuestionBasisFieldActions = captureHardQuestionBasisFields(baseline, predecessor, intent.draft, metadataTime, records,
       editorAction?.kind === 'document-metadata' ? editorAction.hardQuestionBasisReview : undefined);
     const metadataFields = textRetry
@@ -1077,6 +1084,7 @@ export class CommitQueue {
       ...(prayerTextActions && { prayerTextActions }),
       ...metadataFields,
       ...(hardQuestionBasisFieldActions && { hardQuestionBasisFieldActions }),
+      ...(hardQuestionPlacement && { hardQuestionPlacement }),
       ...(churchRecovery && { sermonChurchAction: churchRecovery.observation, sermonChurchFill: churchRecovery.fill }),
       ...(preparationChecks && { sermonPreparationCheckActions: preparationChecks }),
       ...(exegeticalPlanActions && { exegeticalPlanActions }),
@@ -1649,7 +1657,10 @@ export class CommitQueue {
       return { ...record, state: 'refused', result: { kind: 'refused', operationId: record.id, code: 'decision-changed' } };
     }
     const meeting = pendingMeetingDateRebase(record);
+    const questionPlacement = record.sequence === 0 && record.working.metadata?.generation === record.baseline.metadata?.generation
+      ? record.hardQuestionPlacement : undefined;
     let source = record.working;
+    if (questionPlacement && source.value) source = { ...source, value: projectHardQuestionPlace(source.value, questionPlacement.before) };
     if (record.sequence === 0 && record.commentTextOpening && source.value) {
       source = { ...source, value: writeField(source.value, ['content'], record.commentTextOpening) };
     }
@@ -1679,6 +1690,7 @@ export class CommitQueue {
     if (source.value && status.length) source = { ...source, value: replacePreachStatuses(source.value, status, 'before') };
     const retainedRoots = rowFields.filter(({ action }) => equalValues(action.before, action.after)).map(({ target }) => target.field);
     if (status.length) retainedRoots.push('preachDates');
+    if (questionPlacement?.reviewed) retainedRoots.push('rank');
     for (const target of fields) {
       if (target.action === 'hardQuestionFieldActions' && record.hardQuestionFieldActions?.[target.field]?.confirmedItems?.length) {
         retainedRoots.push(target.field);
@@ -1694,6 +1706,7 @@ export class CommitQueue {
     }
     const sourceNoteLink = record.sequence === 0 ? record.sourceNoteLink : undefined;
     let intended = record.intended;
+    if (questionPlacement && intended) intended = projectHardQuestionPlace(intended, questionPlacement.after);
     if (sourceNoteLink) {
       if (!source.value || !intended || !matchesSourceNoteOpening(source, sourceNoteLink)) {
         return { ...record, state: 'refused', result: { kind: 'refused', operationId: record.id, code: 'decision-changed' } };
@@ -1722,6 +1735,9 @@ export class CommitQueue {
     }
     if (!resourceMatches(prepared.command.resource, record.baseline.resource)) throw new Error('Commit resource changed');
     const { command } = prepared;
+    if (questionPlacement && command.kind === 'update' && matchesHardQuestionPlacement(command.changes, questionPlacement)) {
+      command.hardQuestionPlacement = questionPlacement;
+    }
     if (command.kind === 'update' && command.analysisFrameObservedRevision !== undefined) {
       if (record.analysisFramePredecessorRevision !== undefined) command.analysisFrameObservedRevision = record.analysisFramePredecessorRevision;
       // A rebase that changes either frame no longer carries the exact authored action.

@@ -13,6 +13,7 @@ import {
 import { rankForAppend, sortByRank } from '@/utils/listRank';
 import { awaitWriteOperation, type WriteOperation } from '@/utils/recoverableWrite';
 
+import type { HardQuestionPlacementOpening } from '@/data-engine/react.client';
 import type { DocumentData } from '@/data-engine/types';
 import type { HardQuestion, HardQuestionBasis, HardQuestionGroup } from '@/models/models';
 
@@ -107,8 +108,10 @@ export function useHardQuestions() {
    * on what the question holds is a function of the stored question, decided at the write — not of a list that may
    * show an older copy (Codex review 2026-11-27).
    */
-  const changeQuestion = useCallback((questionId: string, patch: QuestionPatch | ((current: DocumentData) => QuestionPatch)) => queued(`question:${questionId}`, () =>
-    write(actions.commit(questionRef(questionId), (current: DocumentData | null) => {
+  const changeQuestion = useCallback((questionId: string, patch: QuestionPatch | ((current: DocumentData) => QuestionPatch),
+    opening?: HardQuestionPlacementOpening) => {
+    const time = actions.captureActionTime() ?? null;
+    return queued(`question:${questionId}`, () => write(actions.commit(questionRef(questionId), (current: DocumentData | null) => {
       if (!current) throw new HardQuestionGoneError();
       const next: DocumentData = { ...current, updatedAt: now() };
       for (const [field, value] of Object.entries(typeof patch === 'function' ? patch(current) : patch)) {
@@ -116,7 +119,8 @@ export function useHardQuestions() {
         else next[field] = value;
       }
       return next;
-    }))), [actions, queued, write]);
+    }, { kind: 'document-metadata', time, hardQuestionPlacementOpening: opening })));
+  }, [actions, queued, write]);
 
   const createTheme = useCallback(async (input: { title: string; intro?: string }): Promise<string> => {
     if (!uid) throw new Error('No signed-in person for this theme');
@@ -241,26 +245,27 @@ export function useHardQuestions() {
 
   /** Puts a question into another theme or group, at the end of it. */
   /**
-   * Puts a question into a theme and group. `seenTheme` is the theme the person saw it in when choosing (the list's,
-   * when not given): a question stored meanwhile in a third theme is refused, not moved over a picture that is no longer
-   * true — moving it would drop the bases it gained there (Codex review 2026-11-27).
+   * Puts a question into a theme and group. The dialog supplies the place it opened from.
+   * A queued commit can read a newer copy, so that later read cannot stand for the opening.
    */
-  const placeQuestion = useCallback((questionId: string, themeId: string | undefined, groupId: string | undefined, seenTheme?: string | null) => {
+  const placeQuestion = useCallback((questionId: string, themeId: string | undefined, groupId: string | undefined, shown?: HardQuestionPlacementOpening | string | null) => {
     const lib = libraryRef.current;
-    const seen = (seenTheme === undefined ? lib.questionById.get(questionId)?.themeId : seenTheme) || undefined;
+    const opening = shown && typeof shown === 'object' ? shown : undefined;
+    const seen = opening ? opening.place.themeId : shown === undefined ? lib.questionById.get(questionId)?.themeId : shown;
     const view = themeId ? lib.themeById.get(themeId) : undefined;
     // A theme chosen and gone meanwhile is refused, not read as «without a theme» (Codex review 2026-11-27).
     if (themeId && !view) return Promise.reject(new HardQuestionGoneError());
     const keptTheme = view ? themeId : undefined;
-    const keptGroup = view && (view.theme.groups ?? []).some((group) => group.id === groupId) ? groupId : undefined;
+    if (groupId && !view?.theme.groups?.some(group => group.id === groupId)) return Promise.reject(new HardQuestionGoneError());
+    const keptGroup = groupId;
     const rank = rankForNewQuestion(lib, keptTheme, keptGroup);
     return changeQuestion(questionId, (current) => {
       const stored = typeof current.themeId === 'string' && current.themeId ? current.themeId : undefined;
-      if (stored !== seen && stored !== keptTheme) throw new HardQuestionGoneError();
+      if (!opening && stored !== (seen || undefined) && stored !== keptTheme) throw new HardQuestionGoneError();
       // The question leaves the bases of a theme it no longer stands in — judged by the theme it is stored in.
       const stays = stored === keptTheme;
       return { themeId: keptTheme, groupId: keptGroup, rank, ...(stays ? {} : { basisIds: undefined }) };
-    });
+    }, opening);
   }, [changeQuestion]);
 
   /* The rest of the groups and the bases: one command on the theme document each (a group is added above, by `addGroup`). */

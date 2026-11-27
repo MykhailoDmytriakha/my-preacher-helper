@@ -46,6 +46,8 @@ import { captureGroupStepPlacement as captureGroupPlacement, projectCapturedGrou
 import { readGroupTextReview } from './groupTextReview';
 import { hardQuestionBasisConflict, hasHardQuestionBasisReview } from './hardQuestionBasisFields';
 import { hardQuestionField, hasHardQuestionListReview } from './hardQuestionFieldAction';
+import { readHardQuestionPlacementConflict } from './hardQuestionPlacement';
+import { readHardQuestionPlacementReview as placementReview } from './hardQuestionPlacementChoice';
 import { readHardQuestionThemeOrderReview as readThemeOrderReview, type HardQuestionThemeOrderChoices } from './hardQuestionThemeOrderReview';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
 import { ARCHIVED_COLLECTIONS, isEngineOwnedLegacyMutation, isEngineOwnedLegacyQuery, legacyCacheMayBeOverwritten } from './legacyQueryRecovery.client';
@@ -205,6 +207,8 @@ export function readDocumentTagComparison(checkpoint: SessionCheckpoint) { retur
 export function readDocumentTextComparison(checkpoint: SessionCheckpoint) { return readDocumentTextChoice(checkpoint); }
 export const isChurchValue: typeof churchValue = churchValue;
 export function churchFieldWords(value: unknown): string | undefined { return churchWords(value); }
+export type { HardQuestionPlace, HardQuestionPlacementOpening } from './hardQuestionPlacement';
+export function readHardQuestionPlacementReview(checkpoint: SessionCheckpoint) { return placementReview(checkpoint); }
 export function readHardQuestionThemeOrderReview(checkpoint: SessionCheckpoint) {
   return readThemeOrderReview(checkpoint);
 }
@@ -218,7 +222,8 @@ export function readHardQuestionBasisConflict(checkpoint: SessionCheckpoint, res
 }
 export function waitsForHardQuestionExactReview(checkpoint: SessionCheckpoint) {
   const { collection } = checkpoint.confirmed.resource;
-  return hasHardQuestionListReview(collection, checkpoint.conflicts) || hasHardQuestionBasisReview(collection, checkpoint.conflicts);
+  return hasHardQuestionListReview(collection, checkpoint.conflicts) || hasHardQuestionBasisReview(collection, checkpoint.conflicts)
+    || (collection === 'hardQuestions' && Boolean(readHardQuestionPlacementConflict(checkpoint.conflicts)));
 }
 export function hasHardQuestionFieldConflict(checkpoint: SessionCheckpoint) {
   return checkpoint.conflicts.some(({ path }) => hardQuestionField(checkpoint.confirmed.resource.collection, path));
@@ -1762,6 +1767,15 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
         return run(editor => {
           if (!editor.applyHardQuestionThemeOrderReview) throw new Error('Theme comparison is unavailable');
           return editor.applyHardQuestionThemeOrderReview(compared, identity, choices, time);
+        });
+      },
+    }),
+    ...(collection === 'hardQuestions' && {
+      applyHardQuestionPlacementReview: (compared: SessionCheckpoint, identity: string, choice: 'local' | 'remote') => {
+        const time = owner ? actionClock.capture(owner) ?? null : null;
+        return run(editor => {
+          if (!editor.applyHardQuestionPlacementReview) throw new Error('Question placement comparison is unavailable');
+          return editor.applyHardQuestionPlacementReview(compared, identity, choice, time);
         });
       },
     }),

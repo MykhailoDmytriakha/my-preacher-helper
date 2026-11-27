@@ -35,6 +35,7 @@ import { retryGroupStepPlacement } from './groupStepPlacement';
 import { groupTextDecision, isGroupStatusComparison, projectGroupTextDecisions, readGroupFlowTextChoice, readGroupTextReview, sameGroupText, writeGroupFlowTextChoice } from './groupTextReview';
 import { hardQuestionBasisConflict } from './hardQuestionBasisFields';
 import { hardQuestionField, type HardQuestionFieldObservations } from './hardQuestionFieldAction';
+import { resolveHardQuestionPlacementReview } from './hardQuestionPlacementChoice';
 import { hardQuestionThemeListPath } from './hardQuestionThemeLists';
 import { resolveHardQuestionThemeOrderReview, type HardQuestionThemeOrderChoices } from './hardQuestionThemeOrderReview';
 import { liveSubmittedWork, sameLiveAtomicProof } from './liveSubmittedWork';
@@ -262,6 +263,11 @@ function captureSaveOptions(captured: SessionCheckpoint, pending: [string, Sessi
   if (predecessorIds.length) options.predecessorIds = predecessorIds;
   if (captureScope) options.retentionScope = captureScope;
   return Object.keys(options).length ? options : undefined;
+}
+
+function orderedQuestionActions(source: SessionCheckpoint, pending: readonly CommitRequest[]) {
+  return [...pending].sort((first, second) => source.pending[first.id].generation - source.pending[second.id].generation)
+    .reduce<HardQuestionFieldObservations>((fields, entry) => ({ ...fields, ...entry.hardQuestionFieldActions }), {});
 }
 
 export class EditorController {
@@ -529,6 +535,26 @@ export class EditorController {
 
   applyHardQuestionThemeOrderReview(compared: SessionCheckpoint, identity: string, choices: HardQuestionThemeOrderChoices,
     choiceTime: ActionTime | null): Promise<void> {
+    return this.applyHardQuestionReview(compared, (source, pending) => {
+      const original = orderedQuestionActions(source, pending);
+      const { value, reviewedText } = resolveHardQuestionThemeOrderReview(source, identity, choices);
+      return { value, action: Object.keys(original).length || reviewedText.length ? {
+        kind: 'document-metadata', time: choiceTime, hardQuestionFieldReview: { fields: reviewedText, original },
+      } : undefined };
+    });
+  }
+
+  applyHardQuestionPlacementReview(compared: SessionCheckpoint, identity: string, choice: 'local' | 'remote',
+    choiceTime: ActionTime | null): Promise<void> {
+    return this.applyHardQuestionReview(compared, (source, pending) => ({
+      value: resolveHardQuestionPlacementReview(source, identity, choice), force: true,
+      action: { kind: 'document-metadata', time: choiceTime, hardQuestionPlacementReviewed: true,
+        hardQuestionFieldReview: { fields: [], original: orderedQuestionActions(source, pending) } },
+    }));
+  }
+
+  private applyHardQuestionReview(compared: SessionCheckpoint,
+    project: (source: SessionCheckpoint, pending: readonly CommitRequest[]) => { value: DocumentData; force?: true; action?: EditorCommitAction }): Promise<void> {
     const captures = this.pendingCaptures.boundary();
     const expected = this.captureRecoveryChoice();
     return this.enqueueChoice(async () => {
@@ -551,8 +577,6 @@ export class EditorController {
       // The comparison displayed the editor's aggregate draft. Unsent dependent actions in that
       // draft are included in the replacement, and the atomic cancellation rechecks that exact set.
       const revisions = new Map(pending.map(entry => [entry.id, entry.revision]));
-      const original = [...pending].sort((first, second) => initial.pending[first.id].generation - initial.pending[second.id].generation)
-        .reduce<HardQuestionFieldObservations>((fields, entry) => ({ ...fields, ...entry.hardQuestionFieldActions }), {});
       await this.options.publishStoredChoice?.(compared.remoteCandidate);
       let source: SessionCheckpoint | undefined;
       let projected: EditorRecord | undefined;
@@ -564,15 +588,15 @@ export class EditorController {
           || !equalValues(source, compared) || [...this.pendingCaptures.boundary()].some(attempt => !captures.has(attempt))) {
           throw Object.assign(new Error('The compared theme save changed'), { code: 'decision-changed' });
         }
-        const { value, reviewedText } = resolveHardQuestionThemeOrderReview(source, identity, choices);
+        const { value, action, force } = project(source, pending);
         const session = DataSession.restore({ ...source, pending: {} });
         session.acceptRemote();
         session.edit(value);
         const next = session.checkpoint();
-        const replacement = next.dirty ? commits.choiceReplacement(record.editorId, next, Object.keys(original).length || reviewedText.length ? {
-          action: { kind: 'document-metadata', time: choiceTime, hardQuestionFieldReview: { fields: reviewedText, original } },
-        } : {}) : null;
-        if (next.dirty && !replacement) throw Object.assign(new Error('The chosen theme could not be captured'), { code: 'decision-changed' });
+        const replacement = next.dirty || force ? commits.choiceReplacement(record.editorId, next, { action }) : null;
+        if ((next.dirty || force) && !replacement) {
+          throw Object.assign(new Error('The choice could not be captured'), { code: 'decision-changed' });
+        }
         if (replacement) session.applyCommit(replacement);
         projected = { ...record, checkpoint: session.checkpoint(), completedCommits: [...new Set([...(record.completedCommits ?? []), ...pendingIds])] };
         return { editorRecords: [projected], manualRecoveries: [], replacements: replacement ? [replacement] : [] };

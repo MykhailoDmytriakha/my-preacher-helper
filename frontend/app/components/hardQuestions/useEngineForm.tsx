@@ -5,7 +5,7 @@ import { useEffect, useLayoutEffect, useRef } from 'react';
 import { toast } from 'sonner';
 
 import { DataSyncStatus, type TextComparison } from '@/data-engine/DataSyncStatus';
-import { hasHardQuestionFieldConflict, readHardQuestionBasisConflict, readHardQuestionThemeOrderReview, useDataDocument, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { hasHardQuestionFieldConflict, readHardQuestionBasisConflict, readHardQuestionPlacementReview, readHardQuestionThemeOrderReview, useDataDocument, useDataForm, useRecoveryDiscovery, type HardQuestionPlace } from '@/data-engine/react.client';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useTranslation } from '@locales/useTranslation';
 
@@ -181,11 +181,14 @@ function themeReviewField(field: ThemeReviewItem, t: ReturnType<typeof useTransl
 }
 
 /** Open the form that owns a text comparison so its exact captured fields are used for the choice. */
-export function EngineReadingStatus({ document, onReview, onReviewBasis, reviewing = false }: {
-  document: ReturnType<typeof useDataDocument>; onReview: (requestId?: string) => void; onReviewBasis?: (basisId: string, requestId?: string) => void; reviewing?: boolean;
+export function EngineReadingStatus({ document, onReview, onReviewBasis, reviewing = false, describePlace }: {
+  document: ReturnType<typeof useDataDocument>; onReview: (requestId?: string) => void; onReviewBasis?: (basisId: string, requestId?: string) => void;
+  reviewing?: boolean; describePlace?: (place: HardQuestionPlace) => string;
 }) {
   const { t } = useTranslation();
   const checkpoint = !document.readOnly && document.status?.phase === 'conflict' ? document.state?.checkpoint : undefined;
+  const applyPlace = document.applyHardQuestionPlacementReview;
+  const placement = checkpoint && describePlace && applyPlace && readHardQuestionPlacementReview(checkpoint);
   const listReview = checkpoint && readHardQuestionThemeOrderReview(checkpoint);
   const applyThemeOrder = document.applyHardQuestionThemeOrderReview;
   const fieldReview = checkpoint && listReview && applyThemeOrder && {
@@ -199,6 +202,18 @@ export function EngineReadingStatus({ document, onReview, onReviewBasis, reviewi
   const requestId = answer?.kind === 'conflict' ? answer.operationId : pending.length === 1 ? pending[0] : undefined;
   const review = basis && onReviewBasis ? () => onReviewBasis(basis.id, basis.requestId)
     : !fieldReview && checkpoint && hasHardQuestionFieldConflict(checkpoint) ? () => onReview(requestId) : undefined;
+  if (checkpoint && placement && applyPlace && describePlace) {
+    const comparison: TextComparison = {
+      identity: placement.identity, title: t('hardQuestions.placement.title'),
+      description: t(placement.unavailable ? 'hardQuestions.placement.unavailable' : 'hardQuestions.placement.description'),
+      mine: describePlace(placement.mine), stored: describePlace(placement.saved), valueKind: 'field', scopedChoice: true,
+      keepMineDisabled: placement.unavailable,
+      actions: { local: t('hardQuestions.placement.useMine'), stored: t('hardQuestions.placement.useSaved') },
+    };
+    return <DataSyncStatus subject={document.recoveryIdentity} status={document.status} error={document.error} errorWords={document.errorWords}
+      className="mt-3" comparison={comparison} onKeepLocal={() => applyPlace(checkpoint, placement.identity, 'local')}
+      onAcceptRemote={() => applyPlace(checkpoint, placement.identity, 'remote')} />;
+  }
   if (review && reviewing) return null;
   return (
     <>

@@ -25,6 +25,7 @@ import { firstGroupMeetingReview, projectFirstGroupMeetingChoice } from './group
 import { GROUP_FLOW_COPY_CONTENT_MISSING, keepGroupFlowCopyContent } from './groupFlowTopology';
 import { groupCopySourceIdsForReview, hasHeldGroupCopies, hasUnreviewedGroupCopy } from './groupPrivateCopyReview';
 import { carryAnchoredDraftChronology, groupPlacementMergeFrame, mergeEditsAfterAnchoredPlacement, mergeGroupFlowRebase, restoreGroupPlacementOrder } from './groupStepPlacement';
+import { preserveHardQuestionPlacementComparison, readHardQuestionPlacementConflict } from './hardQuestionPlacement';
 import { chooseLocalPlacement } from './localPlacementChoice';
 import { projectManualSelection } from './manualScope';
 import { projectOutlineParentChoice, type OutlineTitleDecision } from './outlineParentChoice';
@@ -746,6 +747,17 @@ export class DataSession {
     if (!submitted) return;
     if (result.kind !== 'acknowledged') {
       if ('snapshot' in result) this.observe(result.snapshot, { source: 'server' });
+      if (result.kind === 'conflict' && result.snapshot.resource.collection === 'hardQuestions'
+        && this.matches(result.snapshot) && readHardQuestionPlacementConflict(result.conflicts)) {
+        const current = this.state.remoteCandidate ?? this.state.confirmed;
+        if (current.value && current.metadata?.generation === result.snapshot.metadata?.generation) {
+          // A newer receipt may already contain other saved fields. It still leaves this move pending.
+          this.state.conflicts = copy(preserveHardQuestionPlacementComparison(
+            { ...this.state, conflicts: result.conflicts }, result.conflicts, current));
+          this.state.remoteCandidate = copy(current);
+        }
+        return;
+      }
       // A pinned manual Save can conflict with the parent's already observed baseline.
       if (result.kind === 'conflict' && this.matches(result.snapshot) && !this.isOlder(result.snapshot)
         && canReplaceSnapshot(this.state.remoteCandidate ?? undefined, result.snapshot)) {
@@ -831,7 +843,8 @@ export class DataSession {
     this.state.confirmed = copy(accepted);
     const nextDraft = rebased.value.exists ? rebased.value.value as DocumentData : null;
     this.replaceDraft(groupMoves.length ? restoreGroupPlacementOrder(nextDraft) : nextDraft);
-    this.state.conflicts = copy(preservePlanCellComparisons(this.state, rebased.conflicts));
+    const placementConflicts = preserveHardQuestionPlacementComparison(this.state, rebased.conflicts, accepted);
+    this.state.conflicts = copy(preservePlanCellComparisons(this.state, placementConflicts));
     this.state.remoteCandidate = this.state.conflicts.length ? copy(accepted) : null;
     this.settleHeldScalarsAfterDelivery(accepted, result.snapshot);
     this.state.dirty = !equalValues(this.state.draft, accepted.value) || hasHeldAutosaveFields(this.state)

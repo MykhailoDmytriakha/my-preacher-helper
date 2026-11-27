@@ -15,6 +15,7 @@ import type { ExegeticalPointEdit } from './exegeticalPointCapture';
 import type { GroupMeetingFieldActions } from './groupMeetingFieldAction';
 import type { HardQuestionBasisActions, HardQuestionBasisReview } from './hardQuestionBasisFields';
 import type { HardQuestionFieldReview, HardQuestionFieldStamps } from './hardQuestionFieldAction';
+import type { HardQuestionPlacement, HardQuestionPlacementOpening } from './hardQuestionPlacement';
 import type { HomileticList, HomileticMoveActions, HomileticPositionReviews, HomileticTitleActions } from './homileticPlan';
 import type { SeriesMembershipCapture } from './membershipIntent';
 import type { PrayerStatusObservation, PrayerStatusCapture, PrayerStatusStamp } from './prayerStatusAction';
@@ -94,7 +95,7 @@ export type EditorCommitAction =
   | (ExegeticalPointEdit & { time: ActionTime | null; shown?: ShownCopy })
   | { kind: 'sermon-plan-mode'; mode: SermonPlanModeCapture }
   | { kind: 'account-preference'; time: ActionTime | null; fields?: readonly AccountPreferenceField[] }
-  | { kind: 'document-metadata'; time: ActionTime | null; homileticPositionReview?: HomileticList; sermonMetadataReview?: import('./documentFieldAction').SermonMetadataReviewProofs; seriesFieldReview?: import('./seriesFieldAction').SeriesFieldReview; hardQuestionFieldReview?: HardQuestionFieldReview; hardQuestionBasisReview?: HardQuestionBasisReview }
+  | { kind: 'document-metadata'; time: ActionTime | null; homileticPositionReview?: HomileticList; sermonMetadataReview?: import('./documentFieldAction').SermonMetadataReviewProofs; seriesFieldReview?: import('./seriesFieldAction').SeriesFieldReview; hardQuestionFieldReview?: HardQuestionFieldReview; hardQuestionBasisReview?: HardQuestionBasisReview; hardQuestionPlacementReviewed?: true; hardQuestionPlacementOpening?: HardQuestionPlacementOpening }
   | { kind: 'sermon-preparation-check'; field: PreparationConfirmation; time: ActionTime | null; reviewed?: true }
   | { kind: 'thought-placement'; rowId: string; time: ActionTime | null; shown?: ShownCopy }
   | { kind: 'service-order-placement'; move: ServiceOrderPlacementCapture }
@@ -313,6 +314,7 @@ export type DataCommand = CommandBase & (
       seriesFieldActions?: SeriesFieldStamps;
       hardQuestionFieldActions?: HardQuestionFieldStamps;
       hardQuestionBasisFieldActions?: HardQuestionBasisActions;
+      hardQuestionPlacement?: HardQuestionPlacement;
       groupTitleAction?: DocumentFieldObservation;
       groupStatusAction?: DocumentFieldObservation;
       groupDescriptionAction?: DocumentFieldStamp;

@@ -18,10 +18,11 @@ import { EngineReadingStatus, OrphanDraftWords, UnsavedDraftNotice, useRouteSegm
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { usePublishShellTitle } from '@/components/navigation/shellTitles';
 import { RecordUnavailable } from '@/components/RecordUnavailable';
-import { DataDocumentProvider, useDataDocument } from '@/data-engine/react.client';
+import { DataDocumentProvider, useDataDocument, type HardQuestionPlace, type HardQuestionPlacementOpening } from '@/data-engine/react.client';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useHardQuestions } from '@/hooks/useHardQuestions';
 import { isWaiting, placeOf, readQuestion } from '@/utils/hardQuestions';
+import { sortByRank } from '@/utils/listRank';
 import { useTranslation } from '@locales/useTranslation';
 
 import '@locales/i18n';
@@ -66,7 +67,7 @@ function QuestionWorkspace({ questionId }: { questionId: string }) {
   const [recoverId, setRecoverId] = useState<string | null>(null);
   const [reviewRequestId, setReviewRequestId] = useState<string>();
   const resource = useMemo(() => ({ collection: 'hardQuestions', id: questionId }), [questionId]);
-  const [moving, setMoving] = useState(false);
+  const [moving, setMoving] = useState<{ opening?: HardQuestionPlacementOpening } | null>(null);
   const [removing, setRemoving] = useState(false);
 
   const question = useMemo(() => (document.data ? readQuestion(document.data, questionId) : null), [document.data, questionId]);
@@ -128,6 +129,22 @@ function QuestionWorkspace({ questionId }: { questionId: string }) {
     );
   }
 
+  const describePlace = (destination: HardQuestionPlace) => {
+    const destinationTheme = destination.themeId ? library.themeById.get(destination.themeId) : undefined;
+    const group = destinationTheme?.theme.groups?.find(item => item.id === destination.groupId);
+    const themeLabel = destinationTheme?.theme.title ?? t(destination.themeId ? 'hardQuestions.placement.missingTheme' : 'hardQuestions.withoutTheme');
+    const groupLabel = group?.title ?? (destinationTheme
+      ? t(destination.groupId ? 'hardQuestions.placement.missingGroup' : 'hardQuestions.withoutGroup') : undefined);
+    const questions = destinationTheme?.questions.filter(item => (item.groupId ?? null) === destination.groupId)
+      ?? (!destination.themeId ? library.withoutTheme : []);
+    const ordered = sortByRank([...questions.filter(item => item.id !== questionId).map(item => ({ id: item.id, rank: item.rank, title: item.title })),
+      { id: questionId, rank: destination.rank, title: question.title }]);
+    const index = ordered.findIndex(item => item.id === questionId);
+    const next = ordered[index + 1], previous = ordered[index - 1];
+    const relative = next ? t('hardQuestions.placement.before', { title: next.title })
+      : previous ? t('hardQuestions.placement.after', { title: previous.title }) : undefined;
+    return [themeLabel, groupLabel, relative].filter(Boolean).join(' · ');
+  };
   const waiting = isWaiting(question);
   // The number the theme gives it — the same «вопрос 13» as on the theme's and the basis's pages.
   const number = place?.view ? place.view.questions.findIndex((each) => each.id === question.id) + 1 : 0;
@@ -139,7 +156,7 @@ function QuestionWorkspace({ questionId }: { questionId: string }) {
       <BackLink href={backHref}>{theme ? theme.title : t('hardQuestions.title')}</BackLink>
       {!editing && (
         <>
-          <EngineReadingStatus document={document} onReview={(requestId) => { setReviewRequestId(requestId); setEditing(true); }} />
+          <EngineReadingStatus document={document} describePlace={describePlace} onReview={(requestId) => { setReviewRequestId(requestId); setEditing(true); }} />
           {!document.readOnly && (
             <UnsavedDraftNotice resource={resource} slot={QUESTION_FORM_SLOT} selection={QUESTION_FORM_FIELDS}
               onResume={(draftId) => { setRecoverId(draftId); setEditing(true); }} />
@@ -167,7 +184,11 @@ function QuestionWorkspace({ questionId }: { questionId: string }) {
               <PencilSquareIcon className="h-4 w-4" aria-hidden="true" />{t('hardQuestions.question.edit')}
             </button>
             <ActionsMenu label={t('hardQuestions.question.actions')} disabled={document.readOnly || removing} actions={[
-              { key: 'move', label: t('hardQuestions.question.move'), icon: ArrowsRightLeftIcon, onSelect: () => setMoving(true) },
+              { key: 'move', label: t('hardQuestions.question.move'), icon: ArrowsRightLeftIcon, onSelect: () => {
+                const revision = document.state?.checkpoint.confirmed?.metadata?.revision;
+                const place = { themeId: question.themeId ?? null, groupId: question.themeId ? question.groupId ?? null : null, rank: question.rank };
+                setMoving({ opening: revision ? { place, observedRevision: revision } : undefined });
+              } },
               { key: 'remove', label: t('hardQuestions.question.removeQuestion'), icon: TrashIcon, onSelect: () => void remove(), danger: true },
             ]} />
           </div>
@@ -238,16 +259,16 @@ function QuestionWorkspace({ questionId }: { questionId: string }) {
       )}
 
       {moving && (
-        <MoveQuestionDialog library={library} question={question} onClose={() => setMoving(false)}
+        <MoveQuestionDialog library={library} question={question} onClose={() => setMoving(null)}
           onMove={async (themeId, groupId) => {
             try {
-              await section.placeQuestion(questionId, themeId, groupId, question.themeId ?? null);
+              await section.placeQuestion(questionId, themeId, groupId, moving.opening);
             } catch {
               // Not moved (removed elsewhere, or a save waiting on it): said, and the window stays with its choice.
               toast.error(t('hardQuestions.saveFailed'));
               return;
             }
-            setMoving(false);
+            setMoving(null);
             router.replace(questionPath({ id: questionId, themeId }, Boolean(themeId)));
           }} />
       )}

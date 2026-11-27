@@ -32,6 +32,8 @@ import { GROUP_MEETING_SAVE_DELAY, GROUP_MEETING_SLOT, readyMeetingAutosave } fr
 import { readGroupFlowTextChoice } from './groupTextReview';
 import { hasHardQuestionBasisReview } from './hardQuestionBasisFields';
 import { hasHardQuestionListReview } from './hardQuestionFieldAction';
+import { readHardQuestionPlacementConflict } from './hardQuestionPlacement';
+import { readHardQuestionPlacementReview } from './hardQuestionPlacementChoice';
 import { readHardQuestionThemeOrderReview, type HardQuestionThemeOrderChoices } from './hardQuestionThemeOrderReview';
 import { HOMILETIC_POSITION_PROJECTION, HOMILETIC_POSITION_REVIEW } from './homileticPlan';
 import { reviewedHomileticList } from './homileticPlanChoice';
@@ -211,6 +213,8 @@ export interface ManagedEditor {
   remove(): Promise<void>;
   applyAccountPreferenceReview(compared: SessionCheckpoint, choices: AccountPreferenceResolution, time: ActionTime | null): Promise<void>;
   applyHardQuestionThemeOrderReview?(compared: SessionCheckpoint, identity: string, choices: HardQuestionThemeOrderChoices,
+    choiceTime?: ActionTime | null): Promise<void>;
+  applyHardQuestionPlacementReview?(compared: SessionCheckpoint, identity: string, choice: 'local' | 'remote',
     choiceTime?: ActionTime | null): Promise<void>;
   acceptRemote(expected?: EditorRecord, compared?: SessionCheckpoint, titles?: readonly OutlineTitleDecision[]): Promise<void>;
   keepLocal(expected?: EditorRecord, compared?: SessionCheckpoint, choiceTime?: ActionTime | null, titles?: readonly OutlineTitleDecision[]): Promise<void>;
@@ -1749,7 +1753,8 @@ export class DataEngine {
       throw Object.assign(new Error('Review the subpoint placement in its editor before deciding'), { code: 'decision-changed' });
     }
     if (answered.some(request => request.result?.kind === 'conflict'
-      && (hasHardQuestionListReview(resource.collection, request.result.conflicts) || hasHardQuestionBasisReview(resource.collection, request.result.conflicts)))) {
+      && (hasHardQuestionListReview(resource.collection, request.result.conflicts) || hasHardQuestionBasisReview(resource.collection, request.result.conflicts)
+        || (resource.collection === 'hardQuestions' && readHardQuestionPlacementConflict(request.result.conflicts))))) {
       throw Object.assign(new Error('Open the editor to review the exact comparison'), { code: 'decision-changed' });
     }
     if (answered.length) {
@@ -3097,6 +3102,9 @@ export class DataEngine {
         active();
         if (loadingBranchAnswer) throw Object.assign(new Error('Read the current version before choosing'), { code: 'fresh-read-required' });
         const current = controller.getState().checkpoint;
+        if (frozen.collection === 'hardQuestions' && readHardQuestionPlacementConflict(current.conflicts)) {
+          throw Object.assign(new Error('Choose a place for the question'), { code: 'decision-changed' });
+        }
         if (needsAccountPreferenceReview(current)) {
           throw Object.assign(new Error('Choose a version for each displayed setting'), { code: 'decision-changed' });
         }
@@ -3163,25 +3171,23 @@ export class DataEngine {
         await this.resolveEditorChoice(entry, owner, generation, choice, compared ? controller.captureRecoveryChoice() : expected, choiceTime, titles);
         active();
       };
-      const applyHardQuestionThemeOrderReview = async (compared: SessionCheckpoint, identity: string, choices: HardQuestionThemeOrderChoices,
-        choiceTime: ActionTime | null = null) => {
+      const applyHardQuestionReview = async (compared: SessionCheckpoint, matches: boolean, apply: () => Promise<void>) => {
         active();
-        const comparison = readHardQuestionThemeOrderReview(compared);
         const stored = compared.remoteCandidate;
-        if (loadingBranchAnswer || !stored || comparison?.identity !== identity || !equalValues(controller.getState().checkpoint, compared)) {
-          throw Object.assign(new Error('The shown theme comparison changed'), { code: 'decision-changed' });
+        if (loadingBranchAnswer || !stored || !matches || !equalValues(controller.getState().checkpoint, compared)) {
+          throw Object.assign(new Error('The shown question comparison changed'), { code: 'decision-changed' });
         }
         const live = await this.readWriteTarget(frozen).catch(() => null);
         active();
         if (!live || !canReplaceSnapshot(stored, live)) {
-          throw Object.assign(new Error('Read the current theme before choosing'), { code: 'fresh-read-required' });
+          throw Object.assign(new Error('Read the current record before choosing'), { code: 'fresh-read-required' });
         }
         if (!equalValues(live, stored)) {
           await controller.observe(live, 'server');
-          throw Object.assign(new Error('The shown theme comparison changed'), { code: 'decision-changed' });
+          throw Object.assign(new Error('The shown question comparison changed'), { code: 'decision-changed' });
         }
         const forms = this.manualFormsAffectedByChoice(entry, compared.pending);
-        await controller.applyHardQuestionThemeOrderReview(compared, identity, choices, choiceTime);
+        await apply();
         active();
         try {
           await this.continueManualFormsAfterChoice(entry, owner, generation, forms);
@@ -3189,6 +3195,12 @@ export class DataEngine {
           this.prepareCommitsInBackground(); this.backgroundDrain();
         }
       };
+      const applyHardQuestionThemeOrderReview = (compared: SessionCheckpoint, identity: string, choices: HardQuestionThemeOrderChoices,
+        time: ActionTime | null = null) => applyHardQuestionReview(compared, readHardQuestionThemeOrderReview(compared)?.identity === identity,
+        () => controller.applyHardQuestionThemeOrderReview(compared, identity, choices, time));
+      const applyHardQuestionPlacementReview = (compared: SessionCheckpoint, identity: string, choice: 'local' | 'remote',
+        time: ActionTime | null = null) => applyHardQuestionReview(compared, readHardQuestionPlacementReview(compared)?.identity === identity,
+        () => controller.applyHardQuestionPlacementReview(compared, identity, choice, time));
       const applyAccountPreferenceReview = async (compared: SessionCheckpoint, choices: AccountPreferenceResolution, time: ActionTime | null) => {
         active();
         const review = readAccountPreferenceReview(compared);
@@ -3450,6 +3462,7 @@ export class DataEngine {
         remove: () => remove(),
         applyAccountPreferenceReview,
         applyHardQuestionThemeOrderReview,
+        applyHardQuestionPlacementReview,
         acceptRemote: (expected, compared, titles) => choose('remote', expected, compared, undefined, titles),
         keepLocal: (expected, compared, choiceTime, titles) => choose('local', expected, compared, choiceTime, titles),
         dispose: () => {
