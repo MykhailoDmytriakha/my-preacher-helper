@@ -2,13 +2,18 @@ import { act, renderHook } from '@testing-library/react';
 
 import { useNotePlanGeneration } from '@/(pages)/(private)/sermons/[id]/plan/manual/useNotePlanGeneration';
 import { generateNotePlanContent } from '@/(pages)/(private)/sermons/[id]/plan/planApi';
-import { beginProposal, resolveProposal } from '@/(pages)/(private)/sermons/[id]/plan/manual/notePlanDrafts.client';
+import * as planInboxTransport from '@/(pages)/(private)/sermons/[id]/plan/planResultInbox.client';
+import { beginProposal, readProposal, resolveProposal } from '@/(pages)/(private)/sermons/[id]/plan/manual/notePlanDrafts.client';
 
 import type { ManualConspectus } from '@/(pages)/(private)/sermons/[id]/plan/manual/useManualConspectus';
 import type { Sermon } from '@/models/models';
 import { notePlanContextKey, type NotePlanResult } from '@/utils/notePlan';
 
 jest.mock('@/(pages)/(private)/sermons/[id]/plan/planApi', () => ({ generateNotePlanContent: jest.fn() }));
+jest.mock('@/(pages)/(private)/sermons/[id]/plan/planResultInbox.client', () => ({
+  ...jest.requireActual('@/(pages)/(private)/sermons/[id]/plan/planResultInbox.client'),
+  listPlanResultInbox: jest.fn(),
+}));
 
 const point = { id: 'p', text: 'Point', note: 'List examples', subPoints: [{ id: 'sub', text: 'Detail', position: 0 }] };
 const sermon: Sermon = { id: 's', userId: 'u', title: 'Title', verse: '', date: '', thoughts: [], sourceNoteIds: ['n'],
@@ -32,7 +37,12 @@ function setup(initial: Record<string, string> = {}, blocked = false, base: Serm
   return { ...hook, options, cells, restoreCells, saveCells, applyProposal, authored };
 }
 
-beforeEach(() => { localStorage.clear(); jest.resetAllMocks(); jest.mocked(generateNotePlanContent).mockResolvedValue(generated); });
+beforeEach(() => {
+  localStorage.clear();
+  jest.resetAllMocks();
+  jest.mocked(generateNotePlanContent).mockResolvedValue(generated);
+  jest.mocked(planInboxTransport.listPlanResultInbox).mockResolvedValue({ items: [], closed: [] });
+});
 
 it('reviews a proposal without changing existing text, then accepts it into the editable draft', async () => {
   const view = setup({ p: 'My writing' });
@@ -44,6 +54,92 @@ it('reviews a proposal without changing existing text, then accepts it into the 
   expect(view.result.current.proposals.p).toBeUndefined();
   // Choosing the version is the decision to keep it: the accepted cells are written at once.
   expect(view.saveCells).toHaveBeenCalledWith(['p', 'sub']);
+});
+
+function storeConfirmableOffer() {
+  const scope = { owner: 'u', sermonId: 's' };
+  const before = { p: 'My writing', sub: 'My detail' };
+  const draft = beginProposal(scope, {
+    request: { outlinePointId: 'p', style: 'memory', expectedContext: notePlanContextKey(sermon, 'p') },
+    before, labels: { p: 'Point', sub: 'Detail' }, openingKey: 'server-backed-offer',
+  })!;
+  expect(resolveProposal(scope, { ...draft, state: 'ready', result: generated })).toBe(true);
+  return { before, draft, scope };
+}
+
+it('hides an accepted offer while its exact words are present and keeps the receipt until confirmation', async () => {
+  const { before, draft, scope } = storeConfirmableOffer();
+
+  const view = setup(before);
+  expect(view.result.current.proposals.p.id).toBe(draft.id);
+  await act(async () => { expect(view.result.current.accept('p')).toBe(true); });
+  expect(view.cells).toEqual(generated.contentByNodeId);
+  expect(view.result.current.proposals.p).toBeUndefined();
+  expect(readProposal(scope, draft.id)?.state).toBe('ready');
+  view.unmount();
+
+  const reopened = setup(generated.contentByNodeId);
+  expect(reopened.result.current.proposals.p).toBeUndefined();
+  reopened.cells.sub = 'Different words';
+  reopened.rerender();
+  expect(reopened.result.current.proposals.p.id).toBe(draft.id);
+  expect(reopened.result.current.proposalChanged(reopened.result.current.proposals.p)).toBe(true);
+});
+
+it('hides the selected offer during local capture and restores it if the write is refused', async () => {
+  const { before, draft, scope } = storeConfirmableOffer();
+  const view = setup(before);
+  let release!: (saved: boolean) => void;
+  const held = new Promise<boolean>(resolve => { release = resolve; });
+  view.applyProposal.mockImplementationOnce(async cells => {
+    view.restoreCells(cells);
+    return held;
+  });
+
+  act(() => { expect(view.result.current.accept('p')).toBe(true); });
+  view.rerender();
+  expect(view.cells).toEqual(generated.contentByNodeId);
+  expect(view.result.current.proposals.p).toBeUndefined();
+  expect(readProposal(scope, draft.id)?.state).toBe('ready');
+
+  await act(async () => { release(false); });
+  expect(view.result.current.proposals.p.id).toBe(draft.id);
+});
+
+it.each([
+  ['accepted ready offer', 'ready', true, 1],
+  ['other ready offer', 'ready', false, 0],
+  ['pending offer', 'pending', true, 0],
+] as const)('after a held inbox lookup, ignores only the already chosen offer: %s', async (_label, state, sameId, sends) => {
+  const { before, draft } = storeConfirmableOffer();
+  const origin = setup(before);
+  await act(async () => { expect(origin.result.current.accept('p')).toBe(true); });
+  origin.unmount();
+
+  const previousSubtle = Object.getOwnPropertyDescriptor(globalThis.crypto, 'subtle');
+  Object.defineProperty(globalThis.crypto, 'subtle', { configurable: true, value: { digest: jest.fn() } });
+  type Inbox = Awaited<ReturnType<typeof planInboxTransport.listPlanResultInbox>>;
+  let release!: (value: Inbox) => void;
+  jest.mocked(planInboxTransport.listPlanResultInbox).mockReturnValueOnce(new Promise(resolve => { release = resolve; }));
+  try {
+    const reopened = setup(generated.contentByNodeId);
+    let generation!: Promise<void>;
+    act(() => { generation = reopened.result.current.generate(point, undefined, { instruction: 'Shorter', mode: 'edit' }); });
+    expect(generateNotePlanContent).not.toHaveBeenCalled();
+    const metadata = { mode: 'note', sermonId: 's', pointId: 'p', style: 'memory',
+      openingKey: 'a'.repeat(64), contextKey: 'b'.repeat(64) } as const;
+    const item = { id: sameId ? draft.id : 'other-operation', startedAtMs: 1 };
+    await act(async () => {
+      release({ items: [state === 'ready'
+        ? { ...item, state, value: { ...metadata, proposal: generated } }
+        : { ...item, state, value: metadata }], closed: [] });
+      await generation;
+    });
+    expect(generateNotePlanContent).toHaveBeenCalledTimes(sends);
+  } finally {
+    if (previousSubtle) Object.defineProperty(globalThis.crypto, 'subtle', previousSubtle);
+    else Reflect.deleteProperty(globalThis.crypto, 'subtle');
+  }
 });
 
 it('puts the text into an empty point and saves it without asking for a review', async () => {

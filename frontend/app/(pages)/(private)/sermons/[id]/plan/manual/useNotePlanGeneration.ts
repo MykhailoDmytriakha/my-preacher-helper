@@ -12,7 +12,7 @@ import { readPlanText } from '@/utils/planTextStorage';
 
 import { generateNotePlanContent } from '../planApi';
 import { planResultDigest } from '../planResultInbox.client';
-import { useConfirmedPlanResultClosure } from '../useConfirmedPlanResultClosure';
+import { showsPlanWords, useConfirmedPlanResultClosure } from '../useConfirmedPlanResultClosure';
 import { usePlanResultInbox } from '../usePlanResultInbox';
 import { usePlanStylePreference } from '../usePlanStylePreference';
 
@@ -23,6 +23,8 @@ import { useRecoveredNotePlanProposals, type PlanPending, type Proposal } from '
 import type { ManualConspectus } from './useManualConspectus';
 import type { Sermon, SermonPoint } from '@/models/models';
 
+
+type LocalApplication = { scope: ProposalScope; cells: Record<string, string> };
 
 interface Options {
   sermon: Sermon;
@@ -81,7 +83,8 @@ export function useNotePlanGeneration(options: Options) {
     listProposals(scope).filter(item => item.openingKey).map(item => item.id));
   const inboxItems = useRef(inbox.items);
   inboxItems.current = inbox.items;
-  const closeAfterConfirmation = useConfirmedPlanResultClosure(owner, sermonId, 'note', options.confirmedPlanText, inbox.close);
+  const { remember: closeAfterConfirmation, isAcceptedResultVisible } =
+    useConfirmedPlanResultClosure(owner, sermonId, 'note', options.confirmedPlanText, inbox.close);
   const sourceKey = useSourceKey(options.sourceText);
   const sourceChecking = Boolean(options.sourceText && globalThis.crypto?.subtle && !sourceKey);
   const [records, setRecords] = useState<{ scope: ProposalScope; items: ProposalDraft[] }>();
@@ -90,8 +93,11 @@ export function useNotePlanGeneration(options: Options) {
   const [missing, setMissing] = useState<Record<string, string>>({});
   const [refiningIds, setRefiningIds] = useState<Record<string, boolean>>({});
   const setRefining = (id: string, open: boolean) => setRefiningIds(previous => ({ ...previous, [id]: open }));
-  const latest = useRef({ ...options, scope, sourceKey });
-  latest.current = { ...options, scope, sourceKey };
+  const currentOptions = { ...options, scope, sourceKey, isAcceptedResultVisible };
+  const latest = useRef(currentOptions);
+  latest.current = currentOptions;
+  const [applications, setApplications] = useState<ReadonlyMap<string, LocalApplication>>(() => new Map());
+  const accepting = useRef(applications);
   const requests = useRef(new Map<string, string>());
   const sendRef = useRef<(draft: PendingProposal, recoverOnly: boolean) => Promise<void>>(async () => undefined);
   const mounted = useRef(true);
@@ -114,7 +120,13 @@ export function useNotePlanGeneration(options: Options) {
   const items = records?.scope === scope ? records.items.filter(item => !closedItems?.has(item.id)) : [];
   const { recovered, waiting: recoveredPending } = useRecoveredNotePlanProposals(inbox.items, items,
     options.sermon, options.conspectus.contentByNodeId);
-  const ready: Proposal[] = [...items.flatMap(draft => draft.state === 'ready' ? [{ ...draft, ...draft.result }] : []), ...recovered];
+  const ready: Proposal[] = [...items.flatMap(draft => draft.state === 'ready' ? [{ ...draft, ...draft.result }] : []), ...recovered]
+    .filter(proposal => {
+      const visible = options.conspectus.contentByNodeId;
+      const applying = applications.get(proposal.id);
+      return !isAcceptedResultVisible(proposal.id, visible)
+        && !(applying?.scope === scope && showsPlanWords(visible, applying.cells));
+    });
   const proposals = Object.fromEntries([...ready].reverse().map(proposal => [requestId(proposal), proposal]));
   const pending: PlanPending[] = [
     ...items.filter((draft): draft is PendingProposal => draft.state === 'pending'), ...recoveredPending,
@@ -158,7 +170,13 @@ export function useNotePlanGeneration(options: Options) {
     });
   };
 
-  const accepting = useRef(new Set<string>());
+  const trackApplication = (id: string, application?: LocalApplication) => {
+    const next = new Map(accepting.current);
+    if (application) next.set(id, application);
+    else next.delete(id);
+    accepting.current = next;
+    if (mounted.current) setApplications(next);
+  };
   const accept = (id: string, proposal = proposals[id]) => {
     if (!proposal || !isHere() || !storedProposal(proposal) || proposalBlocked(proposal)) return false;
     if (accepting.current.has(proposal.id)) return false;
@@ -183,14 +201,14 @@ export function useNotePlanGeneration(options: Options) {
       setErrors(previous => ({ ...previous, [id]: applying === null ? 'contextChanged' : 'draftStorage' }));
       return false;
     }
-    accepting.current.add(proposal.id);
+    trackApplication(proposal.id, { scope, cells });
     void applying.then(saved => {
       if (!saved) return;
       if (requiresConfirmation) closeAfterConfirmation(proposal.id, cells);
       if (isHere()) finish();
     }, () => {
       if (isHere()) setErrors(previous => ({ ...previous, [id]: 'draftStorage' }));
-    }).finally(() => accepting.current.delete(proposal.id));
+    }).finally(() => trackApplication(proposal.id));
     return true;
   };
 
@@ -306,8 +324,10 @@ export function useNotePlanGeneration(options: Options) {
       if (!isHere() || latest.current.blocked
         || notePlanContextKey(latest.current.sermon, point.id) !== notePlanContextKey(current.sermon, point.id)
         || latest.current.sourceKey !== current.sourceKey || hasPendingOverlap(nodeIds)) return;
+      const active = latest.current;
       if (offers?.some(item => item.value.pointId === point.id
-        && (item.value.targetNodeId === undefined || nodeIds.includes(item.value.targetNodeId)))) {
+        && (item.value.targetNodeId === undefined || nodeIds.includes(item.value.targetNodeId))
+        && (item.state !== 'ready' || !active.isAcceptedResultVisible(item.id, active.conspectus.contentByNodeId)))) {
         setRefining(id, false);
         return;
       }

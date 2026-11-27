@@ -10,7 +10,7 @@ it('keeps the offer open until every accepted word reaches the confirmed documen
   const view = renderHook(({ confirmed }) => useConfirmedPlanResultClosure('owner', 'sermon', 'note', confirmed, close),
     { initialProps: { confirmed: opening } });
 
-  act(() => { view.result.current('plan-operation', result); });
+  act(() => { view.result.current.remember('plan-operation', result); });
   expect(close).not.toHaveBeenCalled();
 
   view.rerender({ confirmed: { ...opening, first: result.first } });
@@ -30,7 +30,7 @@ it('restarts a pending confirmation on reopening and keeps it inside its origina
   const open = (ownerId: string, confirmed: Record<string, string>) =>
     renderHook(() => useConfirmedPlanResultClosure(ownerId, 'sermon', 'thoughts', confirmed, close));
   const old = open('first-user', { point: 'Still the original' });
-  act(() => { old.result.current('persists-on-navigation', final); });
+  act(() => { old.result.current.remember('persists-on-navigation', final); });
   old.unmount();
   const otherAccount = open('second-user', final);
   expect(close).not.toHaveBeenCalled();

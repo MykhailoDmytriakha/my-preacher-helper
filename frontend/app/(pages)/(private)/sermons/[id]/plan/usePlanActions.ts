@@ -120,7 +120,7 @@ export default function usePlanActions({
   const inboxItems = useRef(inbox.items);
   inboxItems.current = inbox.items;
   const stagedOffers = useRef(new Map<string, { id: string; content: string; scope: symbol }>());
-  const closeAfterConfirmation = useConfirmedPlanResultClosure(ownerId, sermonId, 'thoughts', confirmedPlanText, closeInbox);
+  const { remember: closeAfterConfirmation } = useConfirmedPlanResultClosure(ownerId, sermonId, 'thoughts', confirmedPlanText, closeInbox);
   useEffect(() => {
     if (!ownerId || !sermonId) return;
     const refresh = () => setResults({ scope, points: listPlanPointResults(ownerId, sermonId) });

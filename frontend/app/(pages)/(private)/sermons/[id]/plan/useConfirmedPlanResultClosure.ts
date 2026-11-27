@@ -9,6 +9,11 @@ type PlanWords = Readonly<Record<string, string>>;
 type AcceptedResult = { id: string; cells: PlanWords };
 type Waiting = { scope: PlanInboxScope; items: AcceptedResult[] };
 
+export function showsPlanWords(visible: PlanWords, expected: PlanWords): boolean {
+  const cells = Object.entries(expected);
+  return cells.length > 0 && cells.every(([cell, words]) => visible[cell] === words);
+}
+
 const aggregate = (mode: PlanResultMode) => 'plan-result-confirmation-' + mode;
 const keyFor = ({ ownerId, sermonId, mode }: PlanInboxScope, id: string) => draftKey(ownerId, sermonId, aggregate(mode), id);
 
@@ -57,7 +62,7 @@ export function useConfirmedPlanResultClosure(
     for (const intent of waiting.items) {
       const { id, cells } = intent;
       const key = keyFor(scope, id);
-      if (sending.current.has(key) || !Object.entries(cells).every(([cell, words]) => confirmed[cell] === words)) continue;
+      if (sending.current.has(key) || !showsPlanWords(confirmed, cells)) continue;
       sending.current.add(key);
       // The close queue records its own durable intent before this confirmation record is retired.
       void close(id).then(() => {
@@ -67,5 +72,8 @@ export function useConfirmedPlanResultClosure(
       }, () => undefined).finally(() => sending.current.delete(key));
     }
   }, [close, confirmed, scope, waiting]);
-  return remember;
+  const locallyAccepted = waiting?.scope === scope ? waiting?.items : undefined;
+  const isAcceptedResultVisible = (id: string, visible: PlanWords) => locallyAccepted?.some(intent =>
+    intent.id === id && showsPlanWords(visible, intent.cells)) ?? false;
+  return { remember, isAcceptedResultVisible };
 }
