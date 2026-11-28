@@ -11357,3 +11357,11 @@ In headless Chrome at 390 × 844 with local Auth and Firestore, all three choice
 The original report did not capture frame timing. The local replay demonstrates the disclosed failure mode and removes the dropdown's dependency on the next animation frame. After an authorized release, open one disposable sermon on a narrow screen, choose Classic, enter Scratch with Sort, reopen the mode selector and choose Classic again. Confirm the options and the saved scratch words.
 
 Local case evidence: `artifacts/phone-mode-first-paint-20261127/`.
+
+### BUG-20261113-generation-watermarks-never-collected · Measure a one-shot tag addition
+
+Settings → Tags. On local head `1d057d087`, Chrome created three named tags through the actual form. Each acknowledged at revision 1 and was visible after reloading. The device kept one additional generation row per creation, with zero remaining requests, checkpoints and admission rows for the three tags. The optimized local stand used Auth and Firestore emulators and peaked at 352 MiB. All seven ports were released.
+
+The same action ID can still be needed to answer a refused creation from the global banner. A later cleanup needs to show completed rows going away and prove that closing, local handoff and either recovery choice preserve that original intent. This entry records the baseline.
+
+Local case evidence: `artifacts/one-shot-tag-retention-20261127/`.
