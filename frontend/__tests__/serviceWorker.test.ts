@@ -205,6 +205,36 @@ describe('service worker transport boundary', () => {
       return { response, body, cancelled };
     }
 
+    it.each([false, true])('keeps a script body delivering bytes for 12 seconds (retry: %s)', async retry => {
+      jest.useFakeTimers();
+      const stream = stalledFirstScript();
+      const fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValue(retry ? stream.response : scriptResponse(null));
+      const initial = retry ? scriptResponse('temporary failure', 503) : stream.response;
+      const waiting = networkPrecacheAnswer(new Request(scriptUrl), initial).then(
+        response => ({ response }), error => ({ error }),
+      );
+      const bytes = new TextEncoder().encode('part\n');
+      const timers = Array.from({ length: 12 }, (_, index) => setTimeout(() => {
+        try {
+          stream.body.enqueue(bytes);
+          if (index === 11) stream.body.close();
+        } catch { /* A timed-out reader may already have cancelled the stream. */ }
+      }, (index + 1) * 1_000));
+      try {
+        await jest.advanceTimersByTimeAsync(12_000);
+        expect(await waiting).toEqual({ response: stream.response });
+        expect(fetchSpy).toHaveBeenCalledTimes(retry ? 1 : 0);
+        expect(await stream.response.text()).toBe('part\n'.repeat(12));
+        expect(stream.cancelled).not.toHaveBeenCalled();
+      } finally {
+        timers.forEach(clearTimeout);
+        try { stream.body.close(); } catch { /* The stream may already be closed. */ }
+        await waiting;
+        fetchSpy.mockRestore();
+        jest.useRealTimers();
+      }
+    });
+
     it('bounds the original successful response whose script body stops partway', async () => {
       jest.useFakeTimers();
       const { response: stalled, body, cancelled } = stalledFirstScript(new TextEncoder().encode('first bytes'));

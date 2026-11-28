@@ -11365,3 +11365,15 @@ Settings → Tags. On local head `1d057d087`, Chrome created three named tags th
 The same action ID can still be needed to answer a refused creation from the global banner. A later cleanup needs to show completed rows going away and prove that closing, local handoff and either recovery choice preserve that original intent. This entry records the baseline.
 
 Local case evidence: `artifacts/one-shot-tag-retention-20261127/`.
+
+### Intake F1 · Keep a script response as long as bytes continue to arrive
+
+The release review reproduced a service worker cutting off both copies of the same script despite continued delivery. The existing eight-second wait now renews after each nonempty chunk. The retry keeps a separate deadline for receiving headers, then uses the same body rule. A stalled retry aborts its request and cancels both stream branches. A caller leaving the page still cancels without a retry.
+
+The original-response and retry-body regressions both failed on `f1a588186`. They passed after the change along with both external probes, the worker/startup suites and their previous stalled-body, abort and HTTP status cases. The focused run passed 56 tests. Independent review verified the timing and cancellation paths.
+
+Headless Chrome used the actual recovery plugin in an isolated service worker and synthetic loopback scripts. The baseline rejected a continuously delivered script after two attempts and 16.021 seconds. The fixed worker returned all twelve chunks and executed the original script after 12.017 seconds using one request. For a genuinely stalled response, it closed the first connection after 8.009 seconds and executed the sole replacement. The visible outcomes in the local harness were inspected.
+
+After an authorized release, use a disposable device session to enter a sermon plan under a controlled weak connection. A script with continued bytes should finish from its original request. A script that stops delivering should retry once. Capture which worker version controls the page when running this check.
+
+Local case evidence: `artifacts/main-intake-20261127/F1/`.
