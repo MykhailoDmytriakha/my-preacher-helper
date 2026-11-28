@@ -1834,6 +1834,7 @@ export async function listDocuments(owner: string, collection: string, options: 
   if (!Number.isInteger(limit) || limit < 1 || limit > 100 || (options.cursor !== undefined && !validSegment(options.cursor))) {
     throw new DataEngineServerError(INVALID_ARGUMENT, 400);
   }
+  // Pin the collection head and rows to one snapshot while user commands can still write.
   const headRef = headReference(owner, collection);
   return adminDb.runTransaction(async transaction => {
     const head = await transaction.get(headRef);
@@ -1869,7 +1870,7 @@ export async function listDocuments(owner: string, collection: string, options: 
       : undefined;
     return { snapshots, nextCursor: rows.length > snapshots.length ? snapshots.at(-1)!.resource.id : null, version,
       ...legacyOpenness(collection), ...(actionClock && { actionClock }) };
-  });
+  }, { readOnly: true });
 }
 
 export async function readCollectionChanges(owner: string, collection: string, after: number, options: { limit?: number } = {}): Promise<CollectionChanges> {
@@ -1895,7 +1896,7 @@ export async function readCollectionChanges(owner: string, collection: string, a
       return [resource.id, snapshotFromRaw(resource, raw)] as const;
     }));
     return { ...assembleChangePage(version, after, pointers, new Map(snapshots)), ...legacyOpenness(collection) };
-  });
+  }, { readOnly: true });
 }
 
 /** Bound the bytes actually read, even when Content-Length is absent or dishonest. */

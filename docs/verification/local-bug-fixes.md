@@ -11305,3 +11305,17 @@ In headless Chrome on the local Auth and Firestore emulators, Sermon → Plan �
 After an authorized release, use a disposable sermon to make an edit on one device, then open that plan on the next device and verify the previous words are visible and survive the next edit. Keep the controlled delayed-render fixture on the local stand.
 
 Local case evidence: `artifacts/external-text-recheck-20261127/`.
+
+## BUG-20261118-stand-read-routes-503-under-rapid-loads · Collection reads no longer block saves
+
+Studies → a note. The collection list and change feed used Firestore's default read-write transaction even though their only work was reading. Both now read in a read-only transaction. The head, the feed pointers and the rows still use one consistent snapshot. User commands keep their existing transaction. The Firestore SDK uses one attempt for a read-only transaction. The existing route and client availability handling remains in place. [Firestore Node.js transaction reference](https://docs.cloud.google.com/nodejs/docs/reference/firestore/latest/firestore/firestore#runtransactionupdatefunction-transactionoptions)
+
+Both transaction-mode tests failed on the previous code. All 1,104 focused Jest tests passed, including the route deadline guard and the build environment boundary. Scoped lint reported zero errors and 12 existing warnings. TypeScript and the production-mode local build passed. Independent review verified the SDK's transaction ID and default snapshot consistency, pagination, owner checks, and command behavior.
+
+In headless Chrome at 390 px on the local Auth and Firestore emulators, a disposable note save waited for release of the held list and feed reads on the previous code. They took 1,670 and 1,683 ms. After the change both saves completed while the read was still held, in 29 and 19 ms. Each in-flight read returned HTTP 200 at the original revision with the original words. The exact newer note opened after its acknowledged command, with no console exception or document command from the reading tab. I inspected the saved note screenshots.
+
+At 1280 px, 20 out of 20 notes rendered both before and after the change. The rapid series logged 117 and 118 targeted responses respectively, with zero 503s. On each build three slower browser controls and 20 direct Node requests also passed. The original intermittent 503 has no confirmed cause. The final Next.js process peaked at 291 MiB sampled memory and all seven local ports were released.
+
+After an authorized release, open one test note a few times in a single tab, save an identifiable line, and reopen it. Verify that the text persists and record status and Retry-After if a genuine 503 returns. Keep the held-transaction fixture on the local emulator.
+
+Local case evidence: `artifacts/store-read-locks-20261127/`.

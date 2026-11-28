@@ -1244,6 +1244,14 @@ describe('document operation budgets', () => {
     });
   });
 
+  it.each([
+    ['collection pages', () => listDocuments('owner-1', 'sermons')],
+    ['change feeds', () => readCollectionChanges('owner-1', 'sermons', 0)],
+  ])('reads %s at a consistent snapshot without write locks', async (_surface, read) => {
+    await read();
+    expect(adminDb.runTransaction).toHaveBeenLastCalledWith(expect.any(Function), { readOnly: true });
+  });
+
   it('counts empty queries, live and tombstone lists, and deduplicated feed document reads', async () => {
     await listDocuments('owner-1', 'sermons');
     expect(measured()).toEqual({ reads: 2, writes: 0 }); // Head plus one empty ownership-union query.
