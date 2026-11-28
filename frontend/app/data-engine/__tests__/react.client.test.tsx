@@ -940,6 +940,25 @@ describe('React collection and explicit recovery APIs', () => {
   beforeEach(() => { jest.useFakeTimers(); jest.clearAllMocks(); owner('owner'); });
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
 
+  it('explains the unavailable offline list without logging a device error', async () => {
+    const b = makeBrowser(); jest.mocked(createBrowserDataEngine).mockReturnValue(b.browser);
+    const { result } = renderHook(() => useDataCollection('studyNotes'), { wrapper: Wrapper });
+    await waitFor(() => expect(b.collectionWatches).toHaveLength(1));
+    const report = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const offline = { ...collectionState([]), complete: false, freshness: 'unknown' as const,
+      error: 'Collection cache is unavailable', errorCode: 'cache-unavailable' as const };
+    try {
+      await act(async () => b.collectionWatches[0].next(offline));
+      expect(result.current.error).toBeTruthy();
+      expect(result.current.loading).toBe(false);
+      expect(report).not.toHaveBeenCalled();
+      await act(async () => b.collectionWatches[0].next({ ...collectionState([]), error: 'IndexedDB failed' }));
+      expect(report).toHaveBeenCalledWith('[data-engine]', 'IndexedDB failed');
+      await act(async () => b.collectionWatches[0].next(collectionState()));
+      expect(result.current.error).toBeNull();
+    } finally { report.mockRestore(); }
+  });
+
   it('subscribes to collection updates including remote deletion and never regresses them with an older refresh result', async () => {
     const b = makeBrowser(); jest.mocked(createBrowserDataEngine).mockReturnValue(b.browser);
     const { result, unmount } = renderHook(() => useDataCollection('studyNotes'), { wrapper: Wrapper });

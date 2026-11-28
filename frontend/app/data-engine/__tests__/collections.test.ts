@@ -369,6 +369,36 @@ describe('CollectionReader durable read lifecycle', () => {
     s.reader.dispose();
   });
 
+  it('shows the unavailable cold list during a temporary disconnect without reporting a cache fault', async () => {
+    const s = setup(); s.seed(row('after-reconnect'));
+    s.reader.setOnline(false);
+    const states: CollectionState[] = [];
+    const stop = s.reader.watch(collection, state => { states.push(state); });
+    try {
+      await settle();
+      expect(states.at(-1)).toMatchObject({ complete: false, snapshots: [], error: 'Collection cache is unavailable', errorCode: 'cache-unavailable' });
+      expect(s.transport.list).not.toHaveBeenCalled();
+      expect(s.onError).not.toHaveBeenCalled();
+      s.reader.setOnline(true); await settle();
+      expect(states.at(-1)).toMatchObject({ complete: true, error: null, snapshots: [row('after-reconnect')] });
+      expect(states.at(-1)?.errorCode).toBeUndefined();
+      expect(s.onError).not.toHaveBeenCalled();
+    } finally { stop(); s.reader.dispose(); }
+  });
+
+  it('still reports a genuine device read failure during an offline opening', async () => {
+    const s = setup({ online: false });
+    const failure = new Error('IndexedDB could not read the collection');
+    jest.mocked(s.snapshots.list).mockRejectedValueOnce(failure);
+    const states: CollectionState[] = [];
+    const stop = s.reader.watch(collection, state => { states.push(state); });
+    try {
+      await settle();
+      expect(states.at(-1)?.error).toBe(failure.message);
+      expect(s.onError).toHaveBeenCalledWith(failure, { collection });
+    } finally { stop(); s.reader.dispose(); }
+  });
+
   it('distinguishes an uninitialized empty cache from a complete empty collection', async () => {
     const s = setup({ online: false });
     await expect(s.reader.read(collection)).rejects.toMatchObject({ code: 'cache-unavailable' });

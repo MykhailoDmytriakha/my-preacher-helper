@@ -31,6 +31,8 @@ export interface CollectionSnapshotStore extends SnapshotStore {
   putPage?(owner: string, snapshots: readonly ResourceSnapshot[]): Promise<ResourceSnapshot[]>;
 }
 
+export const COLLECTION_CACHE_UNAVAILABLE = 'cache-unavailable';
+
 export interface CollectionState {
   /** Includes tombstones and confirmed legacy absences; views choose which rows to display. */
   snapshots: ResourceSnapshot[];
@@ -41,6 +43,8 @@ export interface CollectionState {
   checking: boolean;
   version: number;
   error: string | null;
+  /** Offline before a complete cache was available for this collection. */
+  errorCode?: typeof COLLECTION_CACHE_UNAVAILABLE;
 }
 
 export interface CollectionReaderOptions {
@@ -396,7 +400,7 @@ export class CollectionReader {
       await this.load(entry, generation, !reuseOpeningCache);
       this.assertCurrent(entry, generation);
       if (this.cannotReadNow(entry)) return { state: copy(entry.state), fromServer: false };
-      entry.state = { ...entry.state, checking: true, freshness: entry.state.snapshots.length ? 'cache' : 'unknown', error: null };
+      entry.state = { ...entry.state, checking: true, freshness: entry.state.snapshots.length ? 'cache' : 'unknown', error: null, errorCode: undefined };
       this.emit(entry);
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
@@ -404,7 +408,7 @@ export class CollectionReader {
           await this.reloadRows(entry, generation);
           this.assertCurrent(entry, generation);
           entry.asked = true;
-          entry.state = { ...entry.state, complete: true, freshness: 'server', checking: false, version: entry.cursor!.version, error: null };
+          entry.state = { ...entry.state, complete: true, freshness: 'server', checking: false, version: entry.cursor!.version, error: null, errorCode: undefined };
           if (entry.headVersion !== null && entry.headVersion > entry.state.version) entry.state.freshness = 'cache';
           this.emit(entry);
           return { state: copy(entry.state), fromServer: true };
@@ -702,7 +706,7 @@ export class CollectionReader {
   }
 
   private requireAvailableCache(entry: CollectionEntry): void {
-    if (!entry.state.complete && !entry.state.snapshots.length) throw failure('Collection cache is unavailable', 'cache-unavailable');
+    if (!entry.state.complete && !entry.state.snapshots.length) throw failure('Collection cache is unavailable', COLLECTION_CACHE_UNAVAILABLE);
   }
 
   private requireOwner(): string {
@@ -727,9 +731,14 @@ export class CollectionReader {
   }
 
   private report(entry: CollectionEntry, error: unknown): void {
+    const cacheUnavailable = errorCode(error) === COLLECTION_CACHE_UNAVAILABLE;
     entry.state = { ...entry.state, checking: false, freshness: entry.state.snapshots.length || entry.state.complete ? 'cache' : 'unknown',
-      error: error instanceof Error ? error.message : 'Collection synchronization failed' };
+      error: error instanceof Error ? error.message : 'Collection synchronization failed',
+      errorCode: cacheUnavailable ? COLLECTION_CACHE_UNAVAILABLE : undefined };
     this.emit(entry);
+    // An offline list with no stored rows is incomplete, and the UI still says so.
+    // The device cache was read successfully, so there is no storage fault to report.
+    if (cacheUnavailable) return;
     try { this.options.onError?.(error, { collection: entry.collection }); } catch { /* Diagnostics never change the durable cursor. */ }
   }
 

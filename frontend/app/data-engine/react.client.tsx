@@ -20,6 +20,7 @@ import { createBrowserDataEngine, type BrowserDataEngine } from './browser.clien
 import { churchFieldWords as churchWords, isChurchValue as churchValue } from './churchFieldValue';
 import { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 import { isLiveCollectionDocument as liveCollectionDocument, knownCollectionRemovals as collectionRemovals, type CollectionPresentationRow } from './collectionPresentation';
+import { COLLECTION_CACHE_UNAVAILABLE, type CollectionState } from './collections';
 import { COMMENT_EDITOR_SLOT as existingCommentEditorSlot, newCommentEditorSlot as creationCommentSlot } from './commentEditorScope';
 import { commentKindChoiceOpening, readCommentKindComparison as commentKindComparison } from './commentKindChoice';
 import { firstCommentReference as readCommentReference, leadingReferenceValue as readLeadingReference, matchesCommentPlaceScope as matchesPlaceScope, replaceCommentReference as replacePlaceReference } from './commentPlaceAction';
@@ -101,7 +102,6 @@ import { useRecoveryDiscovery as useDiscovery, type RecoveryDiscoveryOptions } f
 
 
 import type { StudyAnalysisWrite } from './analysisReshape';
-import type { CollectionState } from './collections';
 import type { EditorRecord, EditorState, RecoveryCheckpoint } from './controller';
 import type { DatedRowActionCapture } from './datedRowAction';
 import type { ManagedEditor, ManagedManualForm, ManualRecoveryPolicy } from './engine';
@@ -378,14 +378,15 @@ function useSayFailure() {
   return (words: FailureWords | null | undefined): string | null => (words ? sayFailure(words, t) : null);
 }
 
-/** The error an engine object keeps in its state, in words; the original goes to the console once per value. */
-function useStateFailure(raw: string | null | undefined, key = DOCUMENT_FAILED): string | null {
+/** Show the translated state error and log unexpected failures once per observed value. */
+function useStateFailure(raw: string | null | undefined, key = DOCUMENT_FAILED, log = true): string | null {
   const { t } = useTranslation();
   const logged = useRef<string | null>(null);
   useEffect(() => {
-    if (raw && raw !== logged.current) console.error('[data-engine]', raw);
-    logged.current = raw ?? null;
-  }, [raw]);
+    const diagnostic = log ? raw ?? null : null;
+    if (diagnostic && diagnostic !== logged.current) console.error('[data-engine]', diagnostic);
+    logged.current = diagnostic;
+  }, [raw, log]);
   return raw ? t(key) : null;
 }
 
@@ -1894,8 +1895,7 @@ export function useDataCollection(collection: string | null) {
     return () => { active = false; stop?.(); };
   }, [browser, owner, collection, identity, current]);
   const state = observed?.identity === identity ? observed.state : null;
-  const stateError = useStateFailure(state?.error, BACKGROUND_FAILED);
-  // A list that fails says what its wait says; the engine's sentence goes to the console.
+  const stateError = useStateFailure(state?.error, BACKGROUND_FAILED, state?.errorCode !== COLLECTION_CACHE_UNAVAILABLE);
   const ownError = (failure?.identity === identity ? say(failure.words) : null) ?? stateError;
   const waiting = Boolean(owner && collection && !ownError && (!state || (state.freshness === 'unknown' && !state.documents?.some(document => document.value !== null))));
   /*

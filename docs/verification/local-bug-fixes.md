@@ -11251,3 +11251,15 @@ This slice covers new explicit manual forms. Automatic group-meeting recovery, o
 After an authorized release, use one test account profile and a disposable series. Edit and save its title three times, returning to Series and reopening between saves. Inspect only that record's local generation and manual keys after each acknowledgement and exit, and verify the last title after reload. Repeat once with the network paused after local Save, return to Series and reconnect. The pending request should remain until acknowledgement.
 
 Local case evidence: `artifacts/manual-generation-retention-20261127/`.
+
+## BUG-20261127-collection-cache-unavailable-under-slow-dev-server · Cold collection diagnostics
+
+Heart matters → Hard questions → first opening while the application cannot reach the server. An empty, uninitialized device cache was treated as a storage failure in both the background diagnostics and the React list subscriber. The typed offline condition now keeps the translated warning on the page. Genuine read errors still reach diagnostics, and explicit reads retain their typed refusal.
+
+Two Jest regressions failed before the corresponding changes. Seven selected suites passed 281 tests, including a genuine IndexedDB failure. TypeScript and the isolated production build passed. Scoped ESLint reported zero errors and 13 existing warnings. Independent review checked error propagation, retries and the clearing of the offline condition.
+
+At 390 px in headless Chrome with local Auth and Firestore emulators, the same cold-offline fixture produced four diagnostics on `d218a114c` and zero after the changes. Both runs displayed the unreadable-list notice. On reconnect, health returned 204, the hard question collection and feed returned 200, and the seeded question appeared without a reload or browser write. Holding the online collection response for 800 ms displayed “Loading…” with no premature warning, and the question appeared when the response was released. The screenshots were reviewed. The original slow-dev navigation count of 18 was recorded in the bug report; this fixture exercises the same error with controlled connection loss and a separate slow-online check. The final Next.js process peaked at 351 MiB sampled memory, and all seven test ports were released.
+
+After an authorized release, use one test profile and open Hard questions in a fresh browser context with data access temporarily blocked. Verify that the notice is visible, that the console does not call the empty cache a storage fault, and that the list returns on reconnect without creating a write. Keep a single tab and close it as soon as the check finishes.
+
+Local case evidence: `artifacts/cold-collection-diagnostics-20261127/`.
