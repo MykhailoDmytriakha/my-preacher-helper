@@ -11377,3 +11377,17 @@ Headless Chrome used the actual recovery plugin in an isolated service worker an
 After an authorized release, use a disposable device session to enter a sermon plan under a controlled weak connection. A script with continued bytes should finish from its original request. A script that stops delivering should retry once. Capture which worker version controls the page when running this check.
 
 Local case evidence: `artifacts/main-intake-20261127/F1/`.
+
+### Intake F2 · Keep Saves needed by protected sermon recovery copies
+
+The same Save can still be needed by a reopened copy after its first editor has received the server answer. The storage transaction now reads the protected checkpoint ranges before collecting an otherwise removable sermon request. That path preserves devices whose stored copies predate the reference row. Other resources keep the previous sweep budget. All new protected checkpoints also write their reference in the existing format understood by older collectors. Removing the last exact copy releases its reference.
+
+The new tests cover all eleven protected checkpoint forms, including a directly seeded older note-choice row. That row checks storage compatibility. The normal note-choice path starts with an empty queue and resumes in a fresh ordinary editor. The protected header, church, preparation and thought paths were also replayed using the two-fork probes. The probes now assert that an older view cannot delete a copy after it was just edited. Reopening its latest exact version permits an explicit discard. The focused run passed 487 tests, with the prior note storage budget guarded, plus seven two-fork and mixed-version probes.
+
+The layout of ordinary checkpoint records stays byte-compatible. A running old bundle recognizes the reference from a copy written by the new bundle. The new collector reads a cold unbridged copy directly. Older collectors cannot retroactively see a cold reference before the updated code writes it. Verify mixed-version installation and release separately from the local native tests.
+
+Headless Chrome exercised the actual storage modules on one IndexedDB per scenario. The pinned code lost the continuation request after reload. The changed code preserved it across two openings, after acknowledgement by the older `a3b26636d` bundle, and from a cold old note-choice checkpoint. All fixed scenarios retained the newly typed words, rejected the stale discard, and released the remaining rows after discarding the fresh version.
+
+After an authorized release, use a disposable sermon to save a protected recovery copy offline and reopen it again before reconnecting. Confirm that delivery keeps the copy editable and that the newer opened version alone can be discarded.
+
+Local case evidence: `artifacts/main-intake-20261127/F2/`.

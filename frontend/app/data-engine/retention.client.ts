@@ -1,5 +1,6 @@
 'use client';
 
+import { CHECKPOINT_ROW, PROTECTED_CHECKPOINT_ROW_KINDS } from './checkpointKeys';
 import { captureLifetimeEditor, manualScopeParentPrefix, protectedSermonRecoveryKind, retirableManualParent,
   RETIRABLE_EDITOR_PREFIX, RETIRABLE_MANUAL_SCOPE_PREFIX } from './editorIdentity';
 import { collectReleasedAtomicGenerations } from './leasedAtomicRetention.client';
@@ -133,19 +134,13 @@ export function collectCommitRows(store: IDBObjectStore, read: StorageRead, owne
   const references = new Set<string>();
   const meetingStages = new Map<string, ManualScopeRecord>();
   let remaining = 4;
-  const finish = () => {
-    remaining -= 1;
-    if (remaining) return;
-    for (const request of requests) {
-      if (!request.initialized && request.predecessor) references.add(request.predecessor);
-      const stage = meetingStages.get(request.editorId);
-      // The renderer can stop after queuing a Save and before recording its form receipt.
-      if (stage && awaitingManualReceipt(stage, request)) references.add(request.id);
-    }
+  const collectible = (request: CommitRequest) => ['acknowledged', 'cancelled'].includes(request.state)
+    && !request.unfinalized.length && !references.has(request.id);
+  const removeCollectedRequests = () => {
     retainAtomicParticipants(requests, references);
     const watermarks = new Map<string, number>();
     for (const request of requests) {
-      if (!['acknowledged', 'cancelled'].includes(request.state) || request.unfinalized.length || references.has(request.id)) continue;
+      if (!collectible(request)) continue;
       store.delete(commitRowKey(request));
       store.delete(commitDependencyKey(owner, request.id));
       store.delete(['identity', owner, request.id]);
@@ -170,9 +165,32 @@ export function collectCommitRows(store: IDBObjectStore, read: StorageRead, owne
       } else protect();
     }
   };
-  readCommitRows(store, read, owner, values => { requests = values; finish(); });
-  read(store.getAll(engineOwnerRange('checkpoint', owner)), (values: unknown[]) => {
+  const readCheckpointReferences = (values: unknown[]) => {
     for (const record of values) for (const id of checkpointCommitReferences(record)) references.add(id);
+  };
+  const finish = () => {
+    if (--remaining) return;
+    for (const request of requests) {
+      if (!request.initialized && request.predecessor) references.add(request.predecessor);
+      const stage = meetingStages.get(request.editorId);
+      // The renderer can stop after queuing a Save and before recording its form receipt.
+      if (stage && awaitingManualReceipt(stage, request)) references.add(request.id);
+    }
+    // Only sermon Saves can have a protected copy. Look for cold copies without a
+    // reference envelope only when a sermon Save would otherwise be collected.
+    if (!requests.some(request => collectible(request) && request.baseline.resource.collection === 'sermons')) {
+      removeCollectedRequests();
+      return;
+    }
+    let unchecked = PROTECTED_CHECKPOINT_ROW_KINDS.length;
+    for (const kind of PROTECTED_CHECKPOINT_ROW_KINDS) read(store.getAll(engineOwnerRange(kind, owner)), values => {
+      readCheckpointReferences(values);
+      if (!--unchecked) removeCollectedRequests();
+    });
+  };
+  readCommitRows(store, read, owner, values => { requests = values; finish(); });
+  read(store.getAll(engineOwnerRange(CHECKPOINT_ROW, owner)), (values: unknown[]) => {
+    readCheckpointReferences(values);
     finish();
   });
   for (const kind of ['manual', 'reference']) {

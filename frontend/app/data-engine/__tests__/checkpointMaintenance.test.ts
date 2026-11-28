@@ -3,7 +3,7 @@ import { acknowledge, record, request, seedRequest, snapshot } from '@test-utils
 import { createIndexedDbCheckpoints } from '../checkpoint.client';
 import { checkpointKey, writeCheckpointRecord } from '../checkpointStorage.client';
 import { createIndexedDbCommitStore } from '../commits.client';
-import { protectSermonRecoveryEditor } from '../editorIdentity';
+import { manualChoiceRecoveryIdentity, protectSermonRecoveryEditor, recoveryEditorIdentity } from '../editorIdentity';
 import { DataEngine } from '../engine';
 import { ResourceObserver } from '../observer';
 import { DataEngineRuntime } from '../runtime';
@@ -32,8 +32,8 @@ it('persists letters while a maintenance window is held, restarts, then collects
   expect((await restarted.read('owner', 'editor'))?.checkpoint.draft?.content).toBe('all the unsent words');
   storage.resetCounts(); await sweep();
   expect(storage.counts.transactions).toBe(1);
-  // Request ranges, checkpoints, manual records and references, plus three indexed
-  // key ranges for modern ordinary generations, manual generations and compact forms.
+  // Checkpoints, manual records and references, plus three indexed key ranges for the
+  // tracked generations and forms. Non-sermon Saves do not read protected ranges.
   expect(storage.counts.enumerations).toBe(COMMIT_ROW_KINDS.length + 6);
   expect(hasRequest(saved)).toBe(false);
   expect((await restarted.read('owner', 'editor'))?.checkpoint.draft?.content).toBe('all the unsent words');
@@ -94,6 +94,62 @@ it('keeps an answered request referenced by a protected sketch copy through the 
 
   expect(hasRequest(saved)).toBe(false);
   expect((await checkpoints.read('owner', editorId))?.checkpoint.draft?.content).toBe('remaining new words');
+});
+
+const protectedChoices = ['sermon-note', 'sermon-header', 'sermon-church', 'sermon-preparation-check',
+  'sermon-thought-placement', 'sermon-thought-removal', 'sermon-thought-lock', 'sermon-placed-sketch', 'sermon-amended-sketch',
+  'sermon-scratch-removal', 'sermon-scratch-text'] as const;
+
+function protectedCopy(kind: typeof protectedChoices[number]) {
+  const confirmed: ResourceSnapshot = { ...snapshot, resource: { collection: 'sermons', id: 'sermon' },
+    value: { userId: 'owner', title: 'Original words' },
+    metadata: { protocol: 1, generation: 'sermon-generation', revision: 1, deleted: false } };
+  const draft = { ...confirmed.value, title: 'Private words after recovery' };
+  const session = new DataSession(confirmed);
+  session.edit(draft);
+  const editorId = recoveryEditorIdentity(manualChoiceRecoveryIdentity('earlier-refusal', 'chosen-copy', kind), 'fresh');
+  const captured = { ...request('protected-save', editorId), baseline: confirmed, working: confirmed, intended: draft, value: draft };
+  const saved = { ...acknowledge(captured), result: { kind: 'acknowledged' as const, operationId: captured.id,
+    snapshot: { ...confirmed, value: draft } } };
+  session.registerCommit(saved.id, saved.editGeneration, draft);
+  const guard = kind === 'sermon-scratch-text' ? { guardedScratchText: {
+    sermonId: confirmed.resource.id, generation: 'sermon-generation', observedRevision: 1, pending: [],
+    target: { kind: 'scratch' as const, id: 'sketch', createdAt: '2026-11-27' }, text: 'Original words',
+  } } : {};
+  return { editorId, saved, checkpoint: { owner: 'owner', editorId, checkpoint: { ...session.checkpoint(), ...guard },
+    prepared: null, unfinalized: [] } };
+}
+
+it.each(protectedChoices)('retains and releases an acknowledged Save for an existing %s checkpoint without a bridge', async kind => {
+  const { editorId, saved, checkpoint } = protectedCopy(kind);
+  const key = JSON.stringify(checkpointKey('owner', editorId));
+  seedRequest(storage, saved);
+  // This physical row was written before the current writer could create a reference for it.
+  storage.rows.set(key, checkpoint);
+  await sweep();
+
+  expect(hasRequest(saved)).toBe(true);
+  const checkpoints = createIndexedDbCheckpoints();
+  const exact = (await checkpoints.read('owner', editorId))!;
+  expect(exact.checkpoint.pending[saved.id]).toBeDefined();
+  await checkpoints.discardRecovery!(exact, () => true);
+  await sweep();
+
+  expect(hasRequest(saved)).toBe(false);
+  expect(await checkpoints.read('owner', editorId)).toBeUndefined();
+});
+
+it.each(protectedChoices)('writes a legacy-readable Save reference with every new %s checkpoint', async kind => {
+  const { editorId, saved, checkpoint } = protectedCopy(kind);
+  const reference = JSON.stringify(['reference', 'owner', 'placed-sketch-checkpoint', editorId]);
+  seedRequest(storage, saved);
+  const checkpoints = createIndexedDbCheckpoints();
+  await checkpoints.put(checkpoint);
+
+  expect(storage.rows.get(reference)).toEqual({ commitReferences: [saved.id] });
+  const exact = (await checkpoints.read('owner', editorId))!;
+  await checkpoints.discardRecovery!(exact, () => true);
+  expect(storage.rows.has(reference)).toBe(false);
 });
 
 it('keeps an amended sketch and its pending append in versioned native storage', async () => {

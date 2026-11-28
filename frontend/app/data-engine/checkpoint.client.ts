@@ -1,6 +1,7 @@
 'use client';
 
-import { deleteCheckpointRecord, settleCheckpointRecords, writeCheckpointRecord, checkpointKey, studyNoteReturnKey, STUDY_NOTE_RETURN_ROW, SERMON_AMENDED_SKETCH_CHOICE_ROW, SERMON_CHURCH_CHOICE_ROW, SERMON_HEADER_CHOICE_ROW, SERMON_NOTE_CHOICE_ROW, SERMON_PREPARATION_CHECK_CHOICE_ROW, SERMON_PLACED_SKETCH_CHOICE_ROW, SERMON_SCRATCH_REMOVAL_CHOICE_ROW, SERMON_SCRATCH_TEXT_CHOICE_ROW, SERMON_THOUGHT_LOCK_CHOICE_ROW, SERMON_THOUGHT_PLACEMENT_CHOICE_ROW, SERMON_THOUGHT_REMOVAL_CHOICE_ROW } from './checkpointStorage.client';
+import { CHECKPOINT_ROW, checkpointKey, PROTECTED_CHECKPOINT_ROW_KINDS } from './checkpointKeys';
+import { deleteCheckpointRecord, settleCheckpointRecords, writeCheckpointRecord, studyNoteReturnKey, STUDY_NOTE_RETURN_ROW } from './checkpointStorage.client';
 import { MANUAL_CHOICE_RECOVERY_PREFIX } from './editorIdentity';
 import { equalValues } from './fieldValues';
 import { examineRecoveryCheckpoints, isResumableStudyNoteReturn, recoveryCheckpointId, recoveryCheckpointEditorId, unreadableCheckpointDraft, validateRecoveryRecord } from './recovery.client';
@@ -36,11 +37,7 @@ export function createIndexedDbCheckpoints(collect = collectCommitRows): Checkpo
   };
   const list = (owner: string, range: IDBKeyRange) => transaction<Array<[string, unknown]>>('readonly', (store, read, done) => {
     const records: Array<[string, unknown]> = [];
-    const ranges = [range, engineOwnerRange(SERMON_NOTE_CHOICE_ROW, owner), engineOwnerRange(SERMON_HEADER_CHOICE_ROW, owner),
-      engineOwnerRange(SERMON_CHURCH_CHOICE_ROW, owner), engineOwnerRange(SERMON_PREPARATION_CHECK_CHOICE_ROW, owner),
-      engineOwnerRange(SERMON_THOUGHT_PLACEMENT_CHOICE_ROW, owner), engineOwnerRange(SERMON_THOUGHT_REMOVAL_CHOICE_ROW, owner),
-      engineOwnerRange(SERMON_THOUGHT_LOCK_CHOICE_ROW, owner), engineOwnerRange(SERMON_PLACED_SKETCH_CHOICE_ROW, owner),
-      engineOwnerRange(SERMON_AMENDED_SKETCH_CHOICE_ROW, owner), engineOwnerRange(SERMON_SCRATCH_REMOVAL_CHOICE_ROW, owner), engineOwnerRange(SERMON_SCRATCH_TEXT_CHOICE_ROW, owner)];
+    const ranges = [range, ...PROTECTED_CHECKPOINT_ROW_KINDS.map(kind => engineOwnerRange(kind, owner))];
     let remaining = ranges.length;
     for (const range of ranges) {
       let physical: IDBValidKey[] | undefined, values: unknown[] | undefined;
@@ -58,7 +55,7 @@ export function createIndexedDbCheckpoints(collect = collectCommitRows): Checkpo
       read(store.getAll(range), rows => { values = rows; collectRange(); });
     }
   });
-  const all = (owner: string) => list(owner, engineOwnerRange('checkpoint', owner));
+  const all = (owner: string) => list(owner, engineOwnerRange(CHECKPOINT_ROW, owner));
   const select = (records: Array<[string, unknown]>, owner: string, resource?: ResourceRef) =>
     examineRecoveryCheckpoints(records, owner, resource).selected;
   return {
