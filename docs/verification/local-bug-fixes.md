@@ -11290,4 +11290,18 @@ The active Chrome service worker cancelled the first proxy connection at 8.011 s
 
 This documents the reproduced unfinished response. The network outcome of the original intermittent incident remains unknown. After an authorized deployment, open one disposable sermon, enter Preach, reload the plan and return. If a script fails, capture the worker version, HTTP status and body completion. Keep the interrupted body and precache removal on the local stand.
 
+The full Jest suite at exact commit `331a42c4d` passed 18,366 tests across 1,312 suites. The run had 31 skipped tests and three skipped suites.
+
 Local case evidence: `artifacts/sermon-chunk-body-deadline-20261127/`.
+
+## BUG-20261116-field-sends-full-value-over-external-write · Recheck the active text editors
+
+In the earlier Chrome report, five of 140 targeted attempts lost dictated text from a study note. Study notes now use one editor owner. Both sermon plan modes pass the opening that their cell actually rendered. The active comment window uses the engine editor, including the previously verified fix for restoring its recovered draft and typing before Done.
+
+On the unchanged code at `331a42c4d`, six existing suites passed 213 tests covering the plan, note and comment paths. Two mounted tests with the real editor and data engine held an external update between delivery and display. In each plan mode the current typed text and stored version were available for comparison and no command was sent before selection. The selected version persisted in both cases. The November 24 browser evidence for the comment window separately covers input before and after display.
+
+In headless Chrome on the local Auth and Firestore emulators, Sermon → Plan → By hand at 390 px showed both versions after a real keystroke arrived before the held update appeared. Use my version saved the exact typed text. In Sermon → Plan → From thoughts at 1280 px, the external words were already visible when typing began. One Save kept the external words and appended the new ones. Each case issued one unique command and reopened at revision 3 with the expected exact text. The comparison and saved screens were inspected. The Next.js process peaked at 366 MiB sampled memory and all seven ports were released.
+
+After an authorized release, use a disposable sermon to make an edit on one device, then open that plan on the next device and verify the previous words are visible and survive the next edit. Keep the controlled delayed-render fixture on the local stand.
+
+Local case evidence: `artifacts/external-text-recheck-20261127/`.
