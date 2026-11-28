@@ -277,6 +277,21 @@
 
 ## 🔵 P3 — открыто
 
+### BUG-20261127-hard-questions-proofs-in-plain-request-row · Сложные вопросы: правку, поставленную новой версией, старая вкладка или откат доставляют без доказательств или ложно отклоняют
+**Severity P3.** Слова не теряются. Бывает только в смешанном окне: вкладка старой версии открыта до выката рядом с новой, или выкат откатили. Цена — ложный отказ подтверждения и доставка правки без защиты очерёдности (так, как прод доставляет её до `e1df124f5`).
+**Где.** `frontend/app/data-engine/retention.client.ts:18-33` (`commitRowKind`): запрос с новыми доказательствами Сложных вопросов (`hardQuestionFieldActions`, `hardQuestionBasisFieldActions`, `hardQuestionBasisRowActions`, `hardQuestionPlacement` — `frontend/app/data-engine/commits.ts:211-214`) пишется в обычный вид строки `request`. Этот вид читает и доставляет и старая версия `a3b26636d`. Её `prepareDomainCommand` на подтверждении «оставить сохранённую версию» с нулевой разницей возвращает `derived-field` (`a3b26636d:frontend/app/data-engine/domainPolicy.ts:152`), и запрос становится навсегда `refused`. Временные правки и перемещения она отправляет, отбросив доказательства и `hardQuestionListVersions`.
+**Шаги.** Новая версия: в разборе темы без сети подтвердить сохранённую версию поля основания или вопроса, либо поправить и переставить вопрос → запрос в очереди. До доставки ту же базу на устройстве открывает вкладка `a3b26636d` (или выкат откатили) → она доставляет запрос. Пробы: тесты 2A и 2B в деле `2026-11-27-zabor-vetki-codex-27-11` (`artifacts/fixes-e1df/dataEngineRegressions.fixed1A.test.ts`); оба красные на `e1df124f5`, Codex подтвердил их на диапазоне `a3b26636d..f1a588186` (рация #132).
+**Ожидалось.** Старая версия не берёт запрос, чьих доказательств она не понимает, и его доставляет новая версия. **Получилось.** (2A) подтверждение отклонено как `derived-field`. (2B) правка уходит без доказательств очерёдности.
+**Как эта фича должна работать для человека.** Должно срабатывать: правка или подтверждение в разборе темы доходит до сервера с порядком действий, который человек видел, на любой версии, которая её доставляет. Не должно срабатывать: отказ «изменилось только серверное поле» на подтверждении, которое человек сделал сам; старая вкладка не подменяет доставку новой.
+**Класс (механизмом).** Новое доказательство в `CommitRequest` хранится в виде строки, который старая версия читает и доставляет.
+| место | вердикт | почему |
+|---|---|---|
+| `hardQuestionFieldActions`, `hardQuestionBasisFieldActions`, `hardQuestionBasisRowActions`, `hardQuestionPlacement` | поражено | обычный `request` |
+| `hardQuestionGroupIntent`, `hardQuestionRankOpening`, `hardQuestionRankWitnesses`, `hardQuestionRankScope*` | не поражено | атомарные виды `hard-question-group-create-request`, `hard-question-reorder-request` |
+| `scratchRemoval`, `scratchTextRecovery`, `amendedScratchAppend` | не поражено | свои виды строки (`sermon-scratch-*-request`, `sermon-amended-sketch-request`) |
+| `settledHardQuestionRankPredecessor` | проверить при фиксе | вид строки не сверен |
+**Фикс (направление, Codex #132).** Отдельный физический вид строки, сверенный с подготовкой, уже записанными запросами, индексом `request-owner-collection`, зависимостями и старым обработчиком. Граница: новое подтверждение не попадает на старый `prepare`, а хронология сохраняется при доставке.
+
 ### BUG-20261124-plan-labels-loading-text-as-orphaned · Пока проповедь грузится, план называет несохранённый текст «текстом пунктов, которых больше нет в структуре»
 **Severity P3.** Ничего не теряется и не удаляется (блок только для чтения), но на миг человек видит ложное «твои пункты пропали».
 **Где.** `frontend/app/(pages)/(private)/sermons/[id]/plan/manual/page.tsx:437` — ветка `!sermon`: пока документ проповеди не пришёл, `RecordUnavailable` показывает `OrphanedPlanText` с заголовком `orphanedTitle` («Text of points no longer in the structure», `frontend/locales/en/translation.json:3035`) для всех несохранённых ячеек.
