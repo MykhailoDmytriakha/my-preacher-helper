@@ -40,6 +40,11 @@ export function hasMeetingDraft(record: ManualScopeRecord): boolean {
     && record.generation > (record.savedGeneration ?? record.openingGeneration ?? 0));
 }
 
+export function hasRecordedMeetingSave(record: ManualScopeRecord): boolean {
+  return record.active && record.autosaveGroupMeeting === true && groupMeetingForm(record.resource, record.selection)
+    && record.predecessor !== null && record.savedGeneration === record.generation && !hasMeetingDraft(record);
+}
+
 export function readyMeetingAutosave(record: ManualScopeRecord, previous = record.savedSelection): boolean {
   if (!record.active || !record.autosaveGroupMeeting || !groupMeetingForm(record.resource, record.selection)
     || equalValues(record.stage, previous)) return false;

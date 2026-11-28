@@ -4,9 +4,9 @@ import { pendingAutosaveReceipts } from '../automaticDraftResume';
 import { createIndexedDbCheckpoints } from '../checkpoint.client';
 import { CommitQueue } from '../commits';
 import { createIndexedDbCommitStore } from '../commits.client';
-import { manualScopeIdentity, retirableEditorIdentity } from '../editorIdentity';
+import { manualScopeIdentity, retirableEditorIdentity, retirableManualScopeIdentity } from '../editorIdentity';
 import { GROUP_MEETING_SLOT } from '../groupMeetingAutosave';
-import { recoverManualScopeRecord } from '../manualScope';
+import { reconcileManualCaptures, recoverManualScopeRecord } from '../manualScope';
 import { createIndexedDbManualScopes } from '../manualScopes.client';
 import { DataEngine } from '../engine';
 import { ResourceObserver } from '../observer';
@@ -87,7 +87,7 @@ function boot(serverCopy: ResourceSnapshot, held: boolean | null = false) {
   };
   const queue = new CommitQueue({ store: commits, runtime, operationId: () => 'prepared-' + ++sequence, readConfirmed: transport.read });
   queue.setOwner(owner);
-  return { engine, checkpoints, commits, forms, queue, transport, start, leaveDraft, stored: () => copy(server) };
+  return { engine, checkpoints, commits, forms, queue, transport, start, leaveDraft, stored: () => copy(server), cache: (snapshot: ResourceSnapshot) => { saved = copy(snapshot); } };
 }
 
 const meeting = { id: 'meeting', date: '2026-11-23', location: 'Main hall', createdAt: '2026-11-20T12:00:00.000Z' };
@@ -104,9 +104,9 @@ describe('starting again after a meeting edit was saved on the device', () => {
   const time = (ms: number) => ({ earliestMs: 1_800_000_000_000 + ms, latestMs: 1_800_000_000_001 + ms });
   const locationProof = (after: string, ms: number) =>
     ({ location: { rowId: meeting.id, rowCreatedAt: meeting.createdAt, after, time: time(ms) } });
-  const leaveMeeting = async (location: string, generation = 1) => {
-    await device.forms.create({ owner, scopeId, parentEditorId, slot: GROUP_MEETING_SLOT, commitReferences: [],
-      record: { kind: 'manual', version: 1, owner, resource, scopeId, selection: [['meetingDates']], baseline: meetingOpening,
+  const leaveMeeting = async (location: string, generation = 1, storedScopeId = scopeId) => {
+    await device.forms.create({ owner, scopeId: storedScopeId, parentEditorId, slot: GROUP_MEETING_SLOT, commitReferences: [],
+      record: { kind: 'manual', version: 1, owner, resource, scopeId: storedScopeId, selection: [['meetingDates']], baseline: meetingOpening,
         predecessor: null, stage: [{ exists: true, value: meetingStage(location).meetingDates }],
         savedSelection: [{ exists: true, value: [meeting] }], generation, savedGeneration: null, openingGeneration: 0,
         active: true, autosaveGroupMeeting: true, groupMeetingFieldCaptures: locationProof(location, 10) } });
@@ -141,6 +141,74 @@ describe('starting again after a meeting edit was saved on the device', () => {
     expect(device.stored().value?.meetingDates).toEqual([{ ...meeting, location: 'First hall' }]);
     expect(device.transport.send).toHaveBeenCalledTimes(1);
     expect(await device.forms.list(owner)).toHaveLength(0);
+  });
+
+  it('retires a closed meeting form after its acknowledged save', async () => {
+    device.cache(meetingOpening);
+    await device.start();
+    const editor = await device.engine.openEditor(resource, parentEditorId);
+    const form = editor.form(GROUP_MEETING_SLOT, [['meetingDates']]);
+    await form.begin();
+
+    const id = form.getState()!.record.scopeId;
+    await form.update(() => meetingStage('Finished meeting'));
+    await form.save();
+    await device.engine.retry();
+    editor.dispose();
+    await device.engine.retry();
+
+    expect(device.stored().value?.meetingDates).toEqual([{ ...meeting, location: 'Finished meeting' }]);
+    expect(await device.forms.read(owner, id)).toBeUndefined();
+  });
+
+  it('resumes the exact meeting draft after its editor admission is gone and then retires it', async () => {
+    const id = retirableManualScopeIdentity(parentEditorId, GROUP_MEETING_SLOT);
+    await leaveMeeting('Closed meeting words', 1, id);
+
+    await device.start();
+    await device.engine.retry();
+
+    expect(device.transport.send).toHaveBeenCalledTimes(1);
+    expect(device.stored().value?.meetingDates).toEqual([{ ...meeting, location: 'Closed meeting words' }]);
+    expect(await device.forms.read(owner, id)).toBeUndefined();
+    await device.engine.retry();
+    expect(device.transport.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('retires the meeting form after restart when its saved request outlived the form receipt', async () => {
+    const id = retirableManualScopeIdentity(parentEditorId, GROUP_MEETING_SLOT);
+    await leaveMeeting('Previously captured meeting', 1, id);
+    await device.commits.activateOrdinaryEditor!(owner, parentEditorId);
+    await queueChange(id, meetingStage('Previously captured meeting'), { groupMeetingFieldCaptures: locationProof('Previously captured meeting', 10) });
+    await device.commits.retireOrdinaryEditor!(owner, parentEditorId);
+
+    await device.start();
+    await device.engine.retry();
+
+    expect(device.transport.send).toHaveBeenCalledTimes(1);
+    expect(device.stored().value?.meetingDates).toEqual([{ ...meeting, location: 'Previously captured meeting' }]);
+    expect(await device.forms.read(owner, id)).toBeUndefined();
+  });
+
+  it('cleans an acknowledged meeting receipt if the app stopped before closing the form', async () => {
+    const id = retirableManualScopeIdentity(parentEditorId, GROUP_MEETING_SLOT);
+    await leaveMeeting('Meeting captured before the interruption', 1, id);
+    await device.commits.activateOrdinaryEditor!(owner, parentEditorId);
+    const request = await queueChange(id, meetingStage('Meeting captured before the interruption'),
+      { groupMeetingFieldCaptures: locationProof('Meeting captured before the interruption', 10) });
+    const [source] = await device.forms.list(owner);
+    const receipt = reconcileManualCaptures(source.record, [request!]);
+    expect(receipt).toMatchObject({ active: true, generation: 1, savedGeneration: 1, predecessor: { id: request!.id } });
+    expect(receipt.stage).toEqual(receipt.savedSelection);
+    await device.forms.put({ ...source, record: receipt, commitReferences: [request!.id] });
+    await device.commits.retireOrdinaryEditor!(owner, parentEditorId);
+
+    await device.start();
+    await device.engine.retry();
+
+    expect(device.transport.send).toHaveBeenCalledTimes(1);
+    expect(device.stored().value?.meetingDates).toEqual([{ ...meeting, location: 'Meeting captured before the interruption' }]);
+    expect(await device.forms.read(owner, id)).toBeUndefined();
   });
 
   it('retries after a same-group change first appears during the startup target read', async () => {

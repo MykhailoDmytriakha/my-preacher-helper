@@ -11331,3 +11331,17 @@ That establishes what happened in the controlled reload. The original nine event
 For any separately authorized deployment check, save and reload one disposable analysis, then check the exact edited line. If a natural failure occurs, capture its full URL, CDP loader ID and the response lifecycle before comparing it with this run. The timed proxy belongs to the local stand.
 
 Local case evidence: `artifacts/worker-prefetch-trace-20261127/`.
+
+## BUG-20261113-generation-watermarks-never-collected · Retire completed automatic group meeting forms
+
+Groups → Group → Location. On the previous source, three ordinary updates acknowledged at revisions 2, 3 and 4. Leaving the group kept the completed form and its acknowledged request after each update. The updated screen uses the existing retirement mechanism for new meeting forms with a tracked parent. The parent admission remains in force for live edits and allowed writes. The startup path may resume the exact stored draft after checking its version, generation, collection, selected fields, and any competing requests in the same transaction.
+
+A saved request whose form receipt never arrived, and a matching receipt written before the screen closed, both settle through the existing watermark path. The latter requires the same generation, request, group, and saved words. An active form or an uncertain lease is skipped. The earlier forms whose identities lack retirement authority stay recoverable.
+
+Three regressions failed against the previous source. An additional exact interruption after the local form receipt also failed before its fix. All 410 focused Jest tests passed. The local production-mode build and TypeScript passed. Scoped lint reported zero errors and 34 warnings. Independent review covered later edits, old identities, pending delivery, and duplicate protection.
+
+In headless Chrome at 390 px with local Auth and Firestore emulators, the new build acknowledged the three venue changes at the same three revisions and reopened each exact value. After each exit there were zero form, generation, admission and request rows for that group. The date and audience stayed intact. In a separate run an unfinished date and private venue survived leaving and reloading, and choosing the saved draft restored both fields. It issued no command and the server remained at revision 1. I inspected the saved meeting and recovered document. The final stands peaked at 374 MiB sampled Next.js memory and all seven ports were released.
+
+After an authorized release, use one disposable group in one tab. Save a venue, return to Groups and reopen. Repeat once. Confirm the date, audience and latest venue. Enter a partial date and another venue, leave, then recover the saved draft before completing the date. Keep interruption and exact receipt fixtures on the local emulator.
+
+Local case evidence: `artifacts/meeting-form-retention-20261127/`.

@@ -1,7 +1,7 @@
 'use client';
 
 import { isDocumentEditor, manualChoiceRecoveryIdentity, manualScopeIdentity, readManualScopeIdentity, retirableManualParent } from './editorIdentity';
-import { GROUP_MEETING_SLOT, hasMeetingDraft } from './groupMeetingAutosave';
+import { GROUP_MEETING_SLOT, hasMeetingDraft, hasRecordedMeetingSave } from './groupMeetingAutosave';
 import { replaySavedChoiceDelta } from './manualChoice';
 import { retireManualRecoverySources } from './manualRecovery.client';
 import { storedManualContinuation } from './manualReturnSources';
@@ -208,7 +208,8 @@ export function createIndexedDbManualScopes(collect = collectCommitRows): Manual
     listMeetingDrafts: owner => transaction('readonly', (store, read, done) => {
       read(store.getAll(engineOwnerRange('manual', owner)), (values: ManualStorageRecord[]) => {
         const meetings = values.filter((value): value is StoredManualScope =>
-          value?.slot === GROUP_MEETING_SLOT && Boolean(value.record && hasMeetingDraft(value.record)));
+          value?.slot === GROUP_MEETING_SLOT && Boolean(value.record && (hasMeetingDraft(value.record)
+            || (retirableManualParent(value.scopeId) && hasRecordedMeetingSave(value.record)))));
         done(meetings.map(value => validate(value, owner) as StoredManualScope));
       });
     }),
@@ -239,15 +240,21 @@ export function createIndexedDbManualScopes(collect = collectCommitRows): Manual
         const record = current?.record;
         if (!record || current.slot !== GROUP_MEETING_SLOT || !current.recoveryVersion
           || current.recoveryVersion !== value.recoveryVersion || !record.active
-          || !record.autosaveGroupMeeting || !hasMeetingDraft(record)) { done(undefined); return; }
+          || !record.autosaveGroupMeeting) { done(undefined); return; }
+        const recorded = retirableManualParent(value.scopeId) && hasRecordedMeetingSave(record);
+        if (!recorded && !hasMeetingDraft(record)) { done(undefined); return; }
         readCommitRows(store, read, value.owner, requests => {
-          if (!requests.some(request => request.id === requestId && request.state === 'acknowledged')) { done(undefined); return; }
+          const request = requests.find(candidate => candidate.id === requestId && candidate.state === 'acknowledged');
+          if (!request) { done(undefined); return; }
           const saved = reconcileManualCaptures(record, requests);
-          if (saved === record || saved.predecessor?.id !== requestId
+          const exactReceipt = recorded && request.result?.kind === 'acknowledged' && request.editorId === value.scopeId
+            && request.editGeneration === record.savedGeneration && equalValues(request.baseline.resource, record.resource)
+            && equalValues(request.value, record.predecessor?.value);
+          if ((saved === record && !exactReceipt) || saved.predecessor?.id !== requestId
             || !equalValues(saved.stage, saved.savedSelection)) { done(undefined); return; }
           const watermark = { generation: saved.generation, selection: saved.selection, resource: saved.resource };
-          store.put(versionRecoveryRecord({ ...current, record: null, watermark, commitReferences: [] }), target);
-          collect(store, read, value.owner, done);
+          persistManualWatermark(store, read, { ...current, record: null, watermark, commitReferences: [] },
+            () => collect(store, read, value.owner, done));
         });
       });
     }),

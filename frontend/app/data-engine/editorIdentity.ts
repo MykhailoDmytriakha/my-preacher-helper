@@ -187,7 +187,7 @@ export function readManualScopeIdentity(scopeId: string): { parentEditorId: stri
   return parts && { parentEditorId: parts[0], slot: parts[2] };
 }
 
-/** Only new explicit forms with a tracked parent use its durable admission. */
+/** New forms with a tracked parent share its durable admission for live edits. */
 export function retirableManualParent(scopeId: string): string | null {
   const parts = manualScopeParts(scopeId);
   return parts && parts[3]?.startsWith(RETIRABLE_MANUAL_SUFFIX) && isRetirableOrdinaryEditor(parts[0]) ? parts[0] : null;

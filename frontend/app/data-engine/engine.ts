@@ -28,7 +28,7 @@ import { ACTION_SLOT, areDifferentTabManualParents, editorIdentity, editorSlot, 
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
 import { firstGroupMeetingReview } from './groupFirstMeeting';
-import { GROUP_MEETING_SAVE_DELAY, GROUP_MEETING_SLOT, readyMeetingAutosave } from './groupMeetingAutosave';
+import { GROUP_MEETING_SAVE_DELAY, GROUP_MEETING_SLOT, hasRecordedMeetingSave, readyMeetingAutosave } from './groupMeetingAutosave';
 import { readGroupFlowTextChoice } from './groupTextReview';
 import { hasHardQuestionBasisReview } from './hardQuestionBasisFields';
 import { hasHardQuestionListReview } from './hardQuestionFieldAction';
@@ -2265,20 +2265,25 @@ export class DataEngine {
       id: request.id, owner: request.owner, resource: request.baseline.resource,
       value: request.value, predecessorId: request.predecessor,
     }] : []);
+    const recordedSave = (source: StoredManualScope) => Boolean(retirableManualParent(source.scopeId) && hasRecordedMeetingSave(source.record));
     const counts = new Map<string, number>();
-    for (const { record: { resource } } of drafts) counts.set(resource.id, (counts.get(resource.id) ?? 0) + 1);
+    for (const source of drafts) {
+      const { resource } = source.record;
+      if (!recordedSave(source)) counts.set(resource.id, (counts.get(resource.id) ?? 0) + 1);
+    }
     const isSettled = (id: string) => ['acknowledged', 'cancelled'].includes(byId.get(id)?.state ?? '');
     const isCancelled = (id: string) => byId.get(id)?.state === 'cancelled';
 
     for (const source of drafts) {
       const { scopeId } = source;
       const attempts = scan.attempts.get(scopeId) ?? 0;
-      if (counts.get(source.record.resource.id) !== 1 || source.record.recoveryOrigins?.length || attempts >= 2) continue;
+      const recorded = recordedSave(source);
+      if ((!recorded && counts.get(source.record.resource.id) !== 1) || source.record.recoveryOrigins?.length || attempts >= 2) continue;
       const record = reconcileManualCaptures(source.record, requests);
       const { resource, baseline, predecessor } = record;
       // Partial input and decisions after a cancelled Save belong to the recovery UI.
       const ready = readyMeetingAutosave(record);
-      const capturedHere = record !== source.record && predecessor && equalValues(record.stage, record.savedSelection)
+      const capturedHere = (record !== source.record || recorded) && predecessor && equalValues(record.stage, record.savedSelection)
         ? byId.get(predecessor.id) : undefined;
       if ((!ready && !capturedHere) || (predecessor && isCancelled(predecessor.id))) continue;
       if ([...this.manualForms.values()].some(form => form.scopeId === scopeId)
@@ -3891,9 +3896,7 @@ export class DataEngine {
     }
     selection = copy(selection);
     const store = this.options.manualScopes;
-    // Group meetings can publish their explicitly admitted draft after a browser restart.
-    const explicit = resource.collection !== 'groups' || slot !== GROUP_MEETING_SLOT;
-    const identify = (suffix?: string) => parent.retirement && explicit
+    const identify = (suffix?: string) => parent.retirement
       ? retirableManualScopeIdentity(parentEditorId, slot, suffix) : manualScopeIdentity(parentEditorId, slot, suffix);
     const listeners = new Set<() => void>();
     const emit = () => { if (parent.closed || !this.current(owner, generation)) return; for (const listener of listeners) { try { listener(); } catch { /* Rendering cannot change staged intent. */ } } };

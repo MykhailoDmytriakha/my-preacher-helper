@@ -67,7 +67,7 @@ function checkOwnershipFormat(store: IDBObjectStore, read: StorageRead, request:
   });
 }
 
-type CaptureAdmission = 'ordinary' | 'transfer' | 'resume' | 'leased-atomic';
+type CaptureAdmission = 'ordinary' | 'transfer' | 'resume' | 'meeting-resume' | 'leased-atomic';
 
 const closedAtomicCapture = () => Object.assign(new Error('The atomic action capture has closed'), { code: 'commit-editor-closed' });
 
@@ -97,7 +97,8 @@ function writeRecord(store: IDBObjectStore, read: StorageRead, frozen: CommitReq
       });
     });
     const lifetime = captureLifetimeEditor(frozen.editorId);
-    if (lifetime && (admission !== 'resume' || lifetime !== frozen.editorId)) {
+    const resumedOpening = (admission === 'resume' && lifetime === frozen.editorId) || admission === 'meeting-resume';
+    if (lifetime && !resumedOpening) {
       read(store.get(activeOrdinaryEditorKey(frozen.owner, lifetime)), active => {
         if (!active) throw Object.assign(new Error('The editor has already closed'), { code: 'commit-editor-closed' });
         capture();
@@ -361,7 +362,7 @@ export function createIndexedDbCommitStore(collect = collectCommitRows, leases?:
                 const captured = versionRecoveryRecord({ ...source, record: { ...record, active: false }, commitReferences: [saved.id] });
                 store.put(captured, ['manual', frozen.owner, frozen.editorId]);
                 done(saved);
-              });
+              }, 'meeting-resume');
             });
           });
         });
