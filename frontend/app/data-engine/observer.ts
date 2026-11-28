@@ -392,6 +392,8 @@ export class ResourceObserver {
         void this.read(entry, true);
         return;
       }
+      // A completed read can still leave the old generation in view. Let the next listener hint try again.
+      entry.replacementHint = undefined;
       entry.replacementCheck = undefined;
       entry.latestDuringReplacement = undefined;
       entry.latestHintedVersion = undefined;

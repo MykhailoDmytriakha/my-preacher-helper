@@ -11391,3 +11391,11 @@ Headless Chrome exercised the actual storage modules on one IndexedDB per scenar
 After an authorized release, use a disposable sermon to save a protected recovery copy offline and reopen it again before reconnecting. Confirm that delivery keeps the copy editable and that the newer opened version alone can be discarded.
 
 Local case evidence: `artifacts/main-intake-20261127/F2/`.
+
+### Intake F4 · Recheck a replacement after a later listener event
+
+Settings and Bible marks can be recreated at the same address. A listener hint asks for a fresh read to verify the replacement. If that read returns the previous incarnation or fails, the next listener event for the replacement now starts a fresh check. The hint for a confirmation already queued remains active until that check runs.
+
+The four regressions failed because the listener never caused a second read. Both outcomes now pass for both supported resources. The 400 focused tests passed, including observation, list scheduling and engine recovery. The native observer ran in an isolated loopback Chrome page. Before the change all four cases stayed on the previous generation after one read. After the change a later event caused a second read and adopted replacement revision 2. The reset itself neither schedules a request nor changes the retry interval.
+
+Local case evidence: `artifacts/main-intake-20261127/F4/`.

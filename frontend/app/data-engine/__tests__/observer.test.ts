@@ -277,6 +277,34 @@ describe('ResourceObserver', () => {
     h.observer.dispose();
   });
 
+  it.each([
+    ['users', 'stale'], ['users', 'rejected'], ['bibleMarks', 'stale'], ['bibleMarks', 'rejected'],
+  ])('checks a newer %s replacement after the first fresh read is %s', async (collection, result) => {
+    const h = harness();
+    const target = { collection, id: 'owner' };
+    const prior = { ...snapshot(5, 'Previously saved'), resource: target };
+    const replacement = (revision: number): ResourceSnapshot => ({
+      ...snapshot(revision, 'Replacement revision ' + revision), resource: target,
+      metadata: { protocol: 1, generation: 'replacement', revision, deleted: false },
+    });
+    if (result === 'stale') h.read.mockResolvedValueOnce(prior);
+    else h.read.mockRejectedValueOnce(new Error('Fresh read failed'));
+    h.read.mockResolvedValueOnce(replacement(2));
+    h.observer.watch('owner', target, h.listener);
+    h.next(prior);
+    h.next(replacement(1));
+    await jest.advanceTimersByTimeAsync(0);
+    expect(h.read).toHaveBeenCalledTimes(1);
+    expect(h.state()).toMatchObject({ checking: false, snapshot: prior });
+
+    h.next(replacement(2));
+    await jest.advanceTimersByTimeAsync(0);
+    expect(h.read).toHaveBeenCalledTimes(2);
+    expect(h.read).toHaveBeenLastCalledWith('owner', target, { fresh: true });
+    expect(h.state()).toMatchObject({ checking: false, readiness: 'server', snapshot: replacement(2) });
+    h.observer.dispose();
+  });
+
   it('uses the canonical revision-vector comparison for legacy records', () => {
     const h = harness(); h.watch();
     const legacy = { ...snapshot(), metadata: null, value: { content: 'new', rev: { note: 3 } } };
