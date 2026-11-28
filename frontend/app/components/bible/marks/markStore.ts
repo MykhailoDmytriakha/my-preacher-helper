@@ -146,6 +146,7 @@ export function useBookMarks(owner: string | null, bible: BibleId, bookId: strin
       restore: async mark => {
         const { form: current, owner: activeOwner, bible: activeBible, bookId: activeBook } = latest.current;
         if (owner !== activeOwner || id !== marksDocumentId(owner, activeBible, activeBook) || current.readOnly
+          || current.status?.replacementPending
           || current.confirmed?.metadata?.generation !== generation) throw new Error('The marks book changed');
         await current.commit(value => {
           if (!value || !dataObject(value.verses)) throw new Error('The marks book changed');
@@ -167,7 +168,7 @@ export function useBookMarks(owner: string | null, bible: BibleId, bookId: strin
     marks: formMarks,
     save,
     ready: open || (listRead && form.readOnly),
-    writable: open && !form.readOnly && PHASES_TAKING_CHANGES.has(form.status?.phase ?? ''),
+    writable: open && !form.readOnly && !form.status?.replacementPending && PHASES_TAKING_CHANGES.has(form.status?.phase ?? ''),
     others,
     sync: resource ? form : null,
     history,

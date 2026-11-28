@@ -1,5 +1,7 @@
 import { serverCopyIsNewer, type VersionedCopy } from '../utils/readFreshness';
 
+import { hasStableResourceAddress, isStableResourceReplacement } from './stableResourceReplacement';
+
 import type { EngineTransport, ResourceRef, ResourceSnapshot } from './types';
 
 export interface Observation {
@@ -9,6 +11,8 @@ export interface Observation {
   readiness: 'unknown' | 'cache' | 'server';
   checking: boolean;
   error: boolean;
+  /** A fresh origin read proved a replacement of this generation at a stable address. */
+  replacedGeneration?: string;
 }
 
 export interface SnapshotEvent {
@@ -61,6 +65,10 @@ interface Entry {
   failures: number;
   /** Server answers in a row this page could not accept (a copy recreated or removed there). */
   rejections: number;
+  replacementHint?: string;
+  replacementCheck?: 'reading' | 'queued';
+  latestDuringReplacement?: ResourceSnapshot;
+  latestHintedVersion?: ResourceSnapshot;
   /** HTTP checks in a row that stood in for a silent listener. */
   silentChecks: number;
   snapshotSequence: number;
@@ -111,7 +119,7 @@ export class ResourceObserver {
     this.idleLeaseMs = Math.max(this.leaseMs, options.idleLeaseMs ?? 1_800_000);
   }
 
-  watch(owner: string, resource: ResourceRef, listener: Listener): () => void {
+  watch(owner: string, resource: ResourceRef, listener: Listener, opening?: ResourceSnapshot): () => void {
     if (this.disposed) throw new Error('The resource observer has been disposed.');
     const key = keyOf(owner, resource);
     let entry = this.entries.get(key);
@@ -122,6 +130,9 @@ export class ResourceObserver {
         lastHttpAt: null, lastServerAt: null, healthy: false, failures: 0, rejections: 0, silentChecks: 0,
         snapshotSequence: 0, failureFenceEpoch: 0, startedAt: 0,
       };
+      if (opening?.metadata && hasStableResourceAddress(resource) && keyOf(owner, opening.resource) === key) {
+        entry.state = { ...entry.state, snapshot: opening, source: 'cache', readiness: 'cache' };
+      }
       this.entries.set(key, entry);
     }
     // Each watch owns its reference even if callers reuse the same function.
@@ -218,6 +229,10 @@ export class ResourceObserver {
     entry.epoch += 1;
     entry.active = false;
     entry.healthy = false;
+    entry.replacementHint = undefined;
+    entry.replacementCheck = undefined;
+    entry.latestDuringReplacement = undefined;
+    entry.latestHintedVersion = undefined;
     entry.stop?.();
     entry.stop = null;
     this.clearTimer(entry);
@@ -233,6 +248,23 @@ export class ResourceObserver {
     try {
       const stop = this.options.source.listen(entry.owner, entry.resource, (event) => {
         if (!entry.active || entry.epoch !== epoch) return;
+        if (event.source === 'server' && this.online && isStableResourceReplacement(entry.state.snapshot, event.snapshot)) {
+          const hint = event.snapshot.metadata!.generation;
+          if (entry.replacementHint !== hint) {
+            entry.replacementHint = hint;
+            entry.latestHintedVersion = event.snapshot;
+            if (entry.inFlight) {
+              entry.replacementCheck = 'queued';
+              entry.state = { ...entry.state, readiness: 'unknown' };
+              this.emit(entry);
+            } else void this.read(entry, true);
+          } else if (entry.replacementCheck) this.retainDuringReplacement(entry, event);
+          return;
+        }
+        if (entry.replacementCheck) {
+          this.retainDuringReplacement(entry, event);
+          return;
+        }
         if (!this.accept(entry, event)) return;
         if (event.source === 'server') {
           entry.healthy = true;
@@ -292,25 +324,44 @@ export class ResourceObserver {
     }, Math.max(0, target - now));
   }
 
-  private read(entry: Entry): Promise<void> {
+  private read(entry: Entry, fresh = false): Promise<void> {
     if (!this.online || !this.eligible(entry) || !entry.active) return Promise.resolve();
     if (entry.inFlight) return entry.inFlight;
     this.clearTimer(entry);
     const epoch = entry.epoch;
     const sequence = entry.snapshotSequence;
     entry.lastHttpAt = this.now();
-    entry.state = { ...entry.state, checking: true };
+    entry.replacementCheck = fresh ? 'reading' : undefined;
+    entry.state = { ...entry.state, checking: true, ...(fresh && { readiness: 'unknown' as const }) };
     this.emit(entry);
     // Start in a microtask so even a synchronously throwing adapter is contained.
     const pending = Promise.resolve().then(() => {
       if (!this.online || !entry.active || entry.epoch !== epoch) return null;
-      return this.options.transport.read(entry.owner, entry.resource);
-    }).then((snapshot) => {
-      if (!snapshot || !entry.active || entry.epoch !== epoch) return;
-      // An absent/unversioned HTTP answer cannot outvote a later listener event.
-      if (sequence !== entry.snapshotSequence && (!snapshot.metadata ||
-        snapshot.metadata.generation !== entry.state.snapshot?.metadata?.generation)) return;
-      if (!this.accept(entry, { snapshot, source: 'server' })) {
+      return fresh ? this.options.transport.read(entry.owner, entry.resource, { fresh: true })
+        : this.options.transport.read(entry.owner, entry.resource);
+    }).then(async (answer) => {
+      const active = () => entry.active && entry.epoch === epoch;
+      if (!answer || !active() || entry.replacementCheck === 'queued') return;
+      // An absent or different-generation HTTP answer cannot outvote a later listener event.
+      if (sequence !== entry.snapshotSequence && (!answer.metadata ||
+        answer.metadata.generation !== entry.state.snapshot?.metadata?.generation)) return;
+      let snapshot = answer;
+      if (!fresh && isStableResourceReplacement(entry.state.snapshot, answer)) {
+        entry.replacementCheck = 'reading';
+        entry.replacementHint = answer.metadata?.generation;
+        entry.state = { ...entry.state, readiness: 'unknown' };
+        this.emit(entry);
+        if (!active()) return;
+        snapshot = await this.options.transport.read(entry.owner, entry.resource, { fresh: true });
+        if (!active() || this.replacementQueued(entry) || sequence !== entry.snapshotSequence) return;
+      }
+      const held = [entry.latestDuringReplacement, entry.latestHintedVersion].find(candidate =>
+        candidate && snapshot.metadata?.generation === candidate.metadata?.generation);
+      if (snapshot.metadata && held?.metadata && held.metadata.revision > snapshot.metadata.revision
+        && this.canReplace(snapshot, held)) snapshot = held;
+      const replacedGeneration = isStableResourceReplacement(entry.state.snapshot, snapshot)
+        ? entry.state.snapshot?.metadata?.generation : undefined;
+      if (!this.accept(entry, { snapshot, source: 'server' }, replacedGeneration)) {
         // Rejected evidence cannot renew the lease. Fall back at the bounded retry rate,
         // rather than scheduling the already expired lease again with a zero delay — and slow
         // down when it repeats: a copy recreated or removed on the server stays unacceptable, and
@@ -337,6 +388,13 @@ export class ResourceObserver {
     }).finally(() => {
       if (!entry.active || entry.epoch !== epoch) return;
       entry.inFlight = null;
+      if (entry.replacementCheck === 'queued') {
+        void this.read(entry, true);
+        return;
+      }
+      entry.replacementCheck = undefined;
+      entry.latestDuringReplacement = undefined;
+      entry.latestHintedVersion = undefined;
       entry.state = { ...entry.state, checking: false };
       this.emit(entry);
       this.schedule(entry);
@@ -345,19 +403,40 @@ export class ResourceObserver {
     return pending;
   }
 
-  private accept(entry: Entry, event: SnapshotEvent): boolean {
+  private retainDuringReplacement(entry: Entry, event: SnapshotEvent): void {
+    const snapshot = event.snapshot;
+    if (event.source !== 'server' || !snapshot.metadata
+      || keyOf(entry.owner, snapshot.resource) !== keyOf(entry.owner, entry.resource)) return;
+    if (snapshot.metadata.generation === entry.replacementHint) {
+      const hinted = entry.latestHintedVersion;
+      if (!hinted || this.canReplace(hinted, snapshot)) entry.latestHintedVersion = snapshot;
+      return;
+    }
+    const retained = entry.latestDuringReplacement ?? entry.state.snapshot;
+    if (retained?.metadata?.generation === snapshot.metadata.generation
+      && snapshot.metadata.revision > retained.metadata.revision && this.canReplace(retained, snapshot)) {
+      entry.latestDuringReplacement = snapshot;
+    }
+  }
+
+  private replacementQueued(entry: Entry): boolean {
+    return entry.replacementCheck === 'queued';
+  }
+
+  private accept(entry: Entry, event: SnapshotEvent, replacedGeneration?: string): boolean {
     const incoming = event.snapshot;
     if (keyOf(entry.owner, incoming.resource) !== keyOf(entry.owner, entry.resource)) return false;
     // Cache absence is only absence of evidence, including a cached tombstone.
     if (event.source === 'cache' && incoming.value === null) return false;
     const current = entry.state.snapshot;
     if (current && event.source === 'cache' && entry.state.source === 'server') return false;
-    if (current && !this.canReplace(current, incoming)) return false;
+    if (current && !replacedGeneration && !this.canReplace(current, incoming)) return false;
     entry.snapshotSequence += 1;
     if (event.source === 'server') entry.failureFenceEpoch = entry.epoch;
     entry.state = {
       ...entry.state, snapshot: incoming, source: event.source,
       readiness: !this.online && event.source === 'server' ? 'unknown' : event.source, error: false,
+      ...(replacedGeneration && { replacedGeneration }),
     };
     return true;
   }

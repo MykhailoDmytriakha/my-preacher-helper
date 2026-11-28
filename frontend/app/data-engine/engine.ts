@@ -87,6 +87,7 @@ import { DataSession, hasUnreadableDraftProof } from './session';
 import { canReplaceSnapshot, coversCommittedEffect, storesNewCopy } from './snapshotFreshness';
 import { snapshotBelongsToOwner } from './snapshotIdentity';
 import { matchesSourceNoteOpening, sourceNoteLinkOpening, type SourceNoteLinkOpening } from './sourceNoteLinkCapture';
+import { isStableResourceReplacement } from './stableResourceReplacement';
 import { hasStudyNoteReferenceReview } from './studyNoteReferenceMerge';
 import { redeliveryDelay } from './unanswered';
 import { canSaveReviewedThoughtRows, hasUnreadablePreparationCheck, hasUnreadableSermonChurch, hasUnreadableSermonText } from './unreadableDraftProof';
@@ -123,6 +124,9 @@ export interface SnapshotStore {
   list?(owner: string, collection: string): Promise<ResourceSnapshot[]>;
   /** Adapters shared by tabs should compare and store atomically with canReplaceSnapshot. */
   put(owner: string, snapshot: ResourceSnapshot): Promise<void>;
+  /** After a fresh origin proof, compare and store in one transaction. Return the row the transaction saw or installed. */
+  replaceGeneration?(owner: string, expected: ResourceSnapshot | undefined, snapshot: ResourceSnapshot,
+    stillCurrent: () => boolean): Promise<ResourceSnapshot | undefined>;
 }
 
 export interface DataEngineOptions {
@@ -259,6 +263,7 @@ interface EditorEntry {
   closed: boolean;
   listeners: Set<() => void>;
   observation: Observation;
+  verifiedReplacementGeneration?: string;
   pendingActionSaves: Map<number, ClosingSaveIntent[]>;
 }
 
@@ -2897,14 +2902,9 @@ export class DataEngine {
         }
         // Watching an existing ID before create acknowledgement could turn create into update.
         if (!entry.stopObservation && ((!creating && !resumingCreation) || confirmed.metadata || confirmed.value !== null)) {
-          const stopObservation = this.options.observer.watch(owner, frozen, observation => {
-            if (entry.closed || !this.current(owner, generation)) return;
-            entry.observation = observation;
-            this.emit(entry);
-            if (!observation.snapshot || !observation.source) return;
-            this.background(controller.observe(observation.snapshot, observation.source), owner, generation, frozen);
-            this.background(this.persistSnapshot(owner, generation, observation.snapshot), owner, generation, frozen);
-          });
+          const stopObservation = this.options.observer.watch(owner, frozen, observation =>
+            this.receiveEditorObservation(entry, controller, owner, generation, frozen, observation),
+          this.options.snapshots.replaceGeneration ? confirmed : undefined);
           if (entry.closed || !this.current(owner, generation)) stopObservation();
           else entry.stopObservation = stopObservation;
         }
@@ -3031,6 +3031,8 @@ export class DataEngine {
       const commit = (updater: (current: DocumentData | null, confirmed: ResourceSnapshot) => DocumentData | null, onCaptured?: (receipt: DocumentWriteReceipt) => void, captureScope?: string, action?: EditorCommitAction, noteContent?: StudyNoteContentCapture | null) => {
         active();
         const checkpoint = controller.getState().checkpoint;
+        if (isStableResourceReplacement(checkpoint.confirmed, checkpoint.remoteCandidate)) throw Object.assign(
+          new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' });
         if (checkpoint.groupTextReview) throw Object.assign(
           new Error('Finish comparing the group fields before saving another action'), { code: 'resolve-version-first' });
         const rowVersion = action?.kind === 'service-order-flag' || action?.kind === 'council-assembly' ? action.flag
@@ -3642,7 +3644,8 @@ export class DataEngine {
     const waitsForPerson = checkpoint.conflicts.length > 0 || hasUnreadableDraftProof(checkpoint) || hasPrivateSermonPointMove(checkpoint)
       || state.result?.kind === 'conflict' || state.result?.kind === 'refused'
       || Boolean(checkpoint.confirmed.metadata?.deleted)
-      || (checkpoint.remoteCandidate !== null && checkpoint.remoteCandidate.value === null);
+      || (checkpoint.remoteCandidate !== null && checkpoint.remoteCandidate.value === null)
+      || isStableResourceReplacement(checkpoint.confirmed, checkpoint.remoteCandidate);
     if (!checkpoint.dirty || !unqueued || waitsForPerson) return null;
     const predecessorId = pending.sort((a, b) => b[1].generation - a[1].generation)[0]?.[0];
     return { checkpoint: JSON.parse(JSON.stringify(checkpoint)) as SessionCheckpoint, ...(predecessorId ? { predecessorId } : {}) };
@@ -4426,6 +4429,62 @@ export class DataEngine {
       this.options.onError?.(error, resource);
       return saved.checkpoint.confirmed;
     }
+  }
+
+  private receiveEditorObservation(entry: EditorEntry, controller: EditorController, owner: string, generation: number,
+    resource: ResourceRef, observation: Observation): void {
+    if (entry.closed || !this.current(owner, generation)) return;
+    const { snapshot, source, replacedGeneration } = observation;
+    const confirmed = controller.getState().checkpoint.confirmed;
+    if (snapshot && source === 'server' && isStableResourceReplacement(confirmed, snapshot)) {
+      // A reply about another birth does not make the draft it has not reached fresh.
+      const waiting: Observation = { ...observation, readiness: 'unknown' };
+      entry.observation = waiting;
+      this.emit(entry);
+      if (observation.readiness === 'server') {
+        const stillCurrent = () => !entry.closed && this.current(owner, generation) && entry.observation === waiting;
+        const previousEditorGeneration = confirmed.metadata!.generation;
+        const accept = async () => {
+          // A recovered editor can still have the old birth when the shared listener already
+          // opened directly on the newer one. Check the origin before trusting that first echo.
+          const verified = replacedGeneration || entry.verifiedReplacementGeneration === snapshot.metadata?.generation;
+          const fresh = verified ? snapshot : await this.options.transport.read(owner, resource, { fresh: true });
+          if (!stillCurrent() || !canReplaceSnapshot(snapshot, fresh) || !snapshotBelongsToOwner(owner, fresh)) return;
+          const stored = await this.persistReplacement(owner, fresh, replacedGeneration ?? previousEditorGeneration, stillCurrent);
+          if (!stillCurrent() || !stored || !canReplaceSnapshot(fresh, stored)) return;
+          entry.verifiedReplacementGeneration = stored.metadata?.generation;
+          await controller.observeReplacement(stored, previousEditorGeneration, stillCurrent);
+          if (!stillCurrent() || controller.getState().checkpoint.confirmed.metadata?.generation !== stored.metadata?.generation) return;
+          entry.observation = { ...observation, snapshot: stored };
+          this.emit(entry);
+        };
+        this.background(accept(), owner, generation, resource);
+      }
+      return;
+    }
+    entry.observation = observation;
+    this.emit(entry);
+    if (!snapshot || !source) return;
+    this.background(controller.observe(snapshot, source), owner, generation, resource);
+    this.background(this.persistSnapshot(owner, generation, snapshot), owner, generation, resource);
+  }
+
+  private async persistReplacement(owner: string, snapshot: ResourceSnapshot, previousGeneration: string,
+    stillCurrent: () => boolean): Promise<ResourceSnapshot | undefined> {
+    const store = this.options.snapshots;
+    if (!store.replaceGeneration) return undefined;
+    const resource = snapshot.resource;
+    let stored = await store.read(owner, resource);
+    if (!stillCurrent()) return undefined;
+    if (!stored || canReplaceSnapshot(stored, snapshot) || stored.metadata?.generation === previousGeneration) {
+      stored = await store.replaceGeneration(owner, stored, snapshot, stillCurrent);
+    }
+    if (!stored || !stillCurrent() || !isStableResourceReplacement(stored, snapshot)) return stored;
+    // Another tab may install a different birth first. Prove the same incoming birth again,
+    // starting after this exact cache row was read, before trying to replace it.
+    const fresh = await this.options.transport.read(owner, resource, { fresh: true });
+    if (!stillCurrent() || !canReplaceSnapshot(snapshot, fresh) || !snapshotBelongsToOwner(owner, fresh)) return stored;
+    return store.replaceGeneration(owner, stored, fresh, stillCurrent);
   }
 
   private persistSnapshot(owner: string, generation: number, snapshot: ResourceSnapshot): Promise<ResourceSnapshot> {

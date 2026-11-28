@@ -74,6 +74,7 @@ import { DataSession, type SessionCheckpoint, type ShownCopy } from './session';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { legacySourceNoteChange } from './sourceNoteLinkAction';
 import { readSourceNoteLinkComparison, reviewedSourceNoteLinks, sourceNoteChoiceTail } from './sourceNoteLinkChoice';
+import { isStableResourceReplacement } from './stableResourceReplacement';
 import { COMMENT_TEXT_REVIEW } from './studyNoteContentCapture';
 import { keepUncontestedLegacyComment, type LegacyStudyNoteImport } from './studyNoteLegacyDraft';
 import { readStudyNoteReferenceComparison, reviewedReferenceEvidence } from './studyNoteReferenceChoice';
@@ -277,6 +278,7 @@ function orderedQuestionActions(pending: readonly CommitRequest[]) {
 
 export class EditorController {
   private session: DataSession;
+  private confirmedReplacement: ResourceSnapshot | undefined;
   private prepared: DataCommand | null = null;
   private unfinalized: string[] = [];
   private durable = true;
@@ -649,6 +651,8 @@ export class EditorController {
     if (this.choices > 0) return Promise.reject(Object.assign(
       new Error('Finish the current version choice before saving'), { code: PENDING_DELIVERY_FIRST }));
     const intent: NonNullable<typeof capturedIntent> = capturedIntent ?? this.session.checkpoint();
+    if (isStableResourceReplacement(intent.confirmed, intent.remoteCandidate)) return Promise.reject(Object.assign(
+      new Error('Resolve the conflict before saving'), { code: 'resolve-version-first' }));
     if (blocksIndependentActionDuringScratchRecovery(intent, capturedAction)) return Promise.reject(Object.assign(
       new Error('Finish the recovered sketch before saving another field'), { code: 'resolve-version-first' }));
     // This copy needs a decision. Freezing this version as a retry would keep the old question alive.
@@ -779,6 +783,25 @@ export class EditorController {
         await Promise.allSettled(settlement.replaced.map(async copy => copy.discard()));
       }));
     });
+  }
+
+  observeReplacement(snapshot: ResourceSnapshot, replacedGeneration: string, stillCurrent: () => boolean): Promise<void> {
+    return this.enqueue(async () => {
+      if (!stillCurrent()) return;
+      if (this.session.observeReplacement(snapshot, replacedGeneration,
+        this.preserveDraftOnObservation() || !this.canFollowSubmittedWork())) {
+        this.confirmedReplacement = snapshot;
+        await this.persist();
+      }
+    });
+  }
+
+  private followReplacementAfterDelivery(): void {
+    if (!this.confirmedReplacement || !this.canFollowSubmittedWork() || this.preserveDraftOnObservation()) return;
+    const { confirmed, remoteCandidate } = this.session.checkpoint();
+    if (confirmed.metadata && remoteCandidate && equalValues(remoteCandidate, this.confirmedReplacement)) {
+      this.session.observeReplacement(remoteCandidate, confirmed.metadata.generation, false);
+    }
   }
 
   private preserveDraftOnObservation(): boolean {
@@ -1255,6 +1278,7 @@ export class EditorController {
     }
     if (request.result && ['acknowledged', 'conflict', 'refused'].includes(request.state)) this.result = request.result;
     if (this.session.applyCommit(request)) this.completedCommits.push(request.id);
+    if (request.state === 'acknowledged') this.followReplacementAfterDelivery();
     // Cancelled elsewhere with nothing of ours left in flight: the old refusal or conflict answers nothing.
     if (request.state === 'cancelled' && !this.prepared && !Object.keys(this.session.checkpoint().pending).length) this.result = null;
     await this.persist();
@@ -2105,6 +2129,7 @@ export class EditorController {
       this.assertCurrent();
     }
     this.unfinalized = [];
+    this.followReplacementAfterDelivery();
     await this.persist();
   }
 

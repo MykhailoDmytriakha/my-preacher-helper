@@ -89,6 +89,7 @@ import { isReturnedServiceOrderInput as returnedServiceInput, readServiceOrderIn
 import { deletedUnder, UNREADABLE_SCALAR_PROOF, type SessionCheckpoint } from './session';
 import { captureSourceNoteChoices, projectSourceNoteChoices, sourceNoteLinkOpening, type SourceNoteLinkOpening } from './sourceNoteLinkCapture';
 import { readSourceNoteLinkComparison as sourceNoteLinkComparison } from './sourceNoteLinkChoice';
+import { hasStableResourceAddress, isStableResourceReplacement } from './stableResourceReplacement';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
 import { readStudyNoteReferenceComparison as studyNoteReferenceComparison } from './studyNoteReferenceChoice';
 import { captureStudyNoteReferenceChange, hasStudyNoteReferenceReview } from './studyNoteReferenceMerge';
@@ -1740,7 +1741,14 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
           : time ? { kind: 'bible-mark-stroke', time } as const
             : !action && collection === 'users' && owner ? { kind: 'account-preference', time: actionClock.capture(owner) ?? null } as const : undefined;
       cancelScheduledSave();
-      return run(editor => capture ? editor.commit(updater, capture) : editor.commit(updater));
+      return run(editor => {
+        // A gesture from the previous view cannot update a different record under the same address.
+        if (checkpoint && hasStableResourceAddress(checkpoint.confirmed.resource)
+          && isStableResourceReplacement(checkpoint.confirmed, editor.getState().checkpoint.confirmed)) {
+          throw Object.assign(new Error('The shown record changed'), { code: 'decision-changed' });
+        }
+        return capture ? editor.commit(updater, capture) : editor.commit(updater);
+      });
     },
     retainPlanCellAlternative: async (nodeId: string, text: string) =>
       startPlanCellAlternative(nodeId, text)?.retained ?? false,

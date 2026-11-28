@@ -1,5 +1,6 @@
 import { patchPreachDate, preparePreachDate, PREACH_DATE_SELECTION } from '@/components/calendar/preachDateForm';
 import { sermonMetadataPatch, SERMON_METADATA_SELECTION } from '@/components/sermon/sermonMetadataForm';
+import { marksDocumentId } from '@/utils/bibleMarksIdentity';
 import { movePoint, outlinePointGap, outlinePointOrder, projectOutlinePoint } from '@/utils/outlineDnd';
 import { scratchNoteAt } from '@/utils/scratchPlacement';
 import { addSermonThought, deleteSermonThought, patchSermonThought } from '@/utils/sermonThoughtEdits';
@@ -68,6 +69,13 @@ function setup({ cached = true, online = true, nativeChoice = false } = {}) {
   const snapshots: SnapshotStore = {
     read: jest.fn(async (owner, ref) => { const value = cache.get(keyOf(owner, ref)); return value && copy(value); }),
     put: jest.fn(async (owner, value) => { cache.set(keyOf(owner, value.resource), copy(value)); }),
+    replaceGeneration: jest.fn(async (owner, expected, value, stillCurrent) => {
+      const key = keyOf(owner, value.resource);
+      const stored = cache.get(key);
+      if (!stillCurrent() || JSON.stringify(stored) !== JSON.stringify(expected)) return stored && copy(stored);
+      cache.set(key, copy(value));
+      return copy(value);
+    }),
   };
   const journal: JournalStore = {
     list: jest.fn(async owner => copy([...entries.values()].filter(entry => entry.command.owner === owner))),
@@ -107,6 +115,329 @@ function setup({ cached = true, online = true, nativeChoice = false } = {}) {
 describe('DataEngine composition', () => {
   beforeEach(() => { jest.useFakeTimers(); });
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
+
+  describe('a replacement at a stable resource address', () => {
+    const account = { collection: 'users', id: 'owner' };
+    const version = (generation: string, revision: number, displayName: string): ResourceSnapshot => ({
+      resource: account, value: { language: 'en', displayName },
+      metadata: { protocol: 1, generation, revision, deleted: false },
+    });
+    const previous = version('previous-generation', 9, 'Previous profile');
+    const current = version('current-generation', 1, 'Current profile');
+
+    it.each(['first answer', 'live recreation'] as const)('adopts a proved newer birth after the %s without a command', async phase => {
+      const s = setup();
+      const address = keyOf('owner', account);
+      s.cache.set(address, previous);
+      s.server.set(address, previous);
+      const editor = await s.engine.openEditor(account, 'settings-replacement');
+      try {
+        if (phase === 'live recreation') {
+          s.next(previous); await drainMicrotasks();
+        }
+        s.server.set(address, current);
+        s.next(current, 'cache'); await drainMicrotasks();
+        expect(editor.getState().checkpoint.confirmed).toEqual(previous);
+        const proof = deferred<ResourceSnapshot>();
+        jest.mocked(s.transport.read).mockReturnValueOnce(proof.promise);
+        s.next(current); await drainMicrotasks();
+        expect(s.transport.read).toHaveBeenCalledWith('owner', account, { fresh: true });
+        expect(editor.getState().checkpoint.confirmed).toEqual(previous);
+        expect(editor.getObservation().readiness).not.toBe('server');
+        proof.resolve(current); await drainMicrotasks();
+        expect(editor.getState().checkpoint).toMatchObject({ confirmed: current, draft: current.value, dirty: false, remoteCandidate: null });
+        expect(editor.getObservation()).toMatchObject({ snapshot: current, readiness: 'server' });
+        expect(await s.engine.peekCached(account)).toEqual(current);
+        expect(s.transport.send).not.toHaveBeenCalled();
+      } finally { editor.dispose(); s.engine.dispose(); }
+    });
+
+    it('keeps words entered during the replacement proof on their original birth', async () => {
+      const s = setup();
+      const address = keyOf('owner', account);
+      s.cache.set(address, previous);
+      s.server.set(address, current);
+      const editor = await s.engine.openEditor(account, 'settings-authored-before-replacement');
+      try {
+        const proof = deferred<ResourceSnapshot>();
+        jest.mocked(s.transport.read).mockReturnValueOnce(proof.promise);
+        s.next(current); await drainMicrotasks();
+        const words = { ...previous.value!, displayName: 'My unsent name' };
+        await editor.edit(words);
+        proof.resolve(current); await drainMicrotasks();
+        const { checkpoint } = editor.getState();
+        expect(checkpoint).toMatchObject({ confirmed: previous, draft: words, dirty: true, remoteCandidate: current });
+        expect(describeSync(editor.getState(), editor.getObservation(), editor.getDelivery())).toMatchObject({
+          phase: 'remoteChanged', replacementPending: true, canSave: false, canRemove: false, canAcceptRemote: true,
+        });
+        expect(editor.getObservation().readiness).not.toBe('server');
+        expect(await s.engine.peekCached(account)).toEqual(current);
+        await expect(editor.save()).rejects.toMatchObject({ code: 'resolve-version-first' });
+        editor.close({ flush: true });
+        await drainMicrotasks();
+        expect(s.transport.send).not.toHaveBeenCalled();
+        expect(await s.commits.list('owner')).toEqual([]);
+        expect(s.records.get(JSON.stringify(['owner', 'settings-authored-before-replacement']))?.checkpoint)
+          .toMatchObject({ confirmed: previous, draft: words, dirty: true });
+      } finally { editor.dispose(); s.engine.dispose(); }
+    });
+
+    it('fences a held proof after the workspace switches account', async () => {
+      const s = setup();
+      const address = keyOf('owner', account);
+      s.cache.set(address, previous);
+      const proof = deferred<ResourceSnapshot>();
+      jest.mocked(s.transport.read).mockReturnValueOnce(proof.promise);
+      await s.engine.openEditor(account, 'settings-old-account');
+      try {
+        s.next(current); await drainMicrotasks();
+        expect(s.transport.read).toHaveBeenCalledWith('owner', account, { fresh: true });
+        s.engine.setOwner('another-account');
+        proof.resolve(current); await drainMicrotasks();
+        expect(s.cache.get(address)).toEqual(previous);
+        expect(s.snapshots.replaceGeneration).not.toHaveBeenCalled();
+      } finally { s.engine.dispose(); }
+    });
+
+    it('leaves a third generation installed by another reader untouched', async () => {
+      const s = setup();
+      const address = keyOf('owner', account);
+      const third = version('third-generation', 3, 'Installed elsewhere');
+      s.cache.set(address, previous);
+      s.server.set(address, current);
+      jest.mocked(s.snapshots.replaceGeneration!).mockImplementationOnce(async () => {
+        s.cache.set(address, third);
+        s.server.set(address, third);
+        return third;
+      });
+      const editor = await s.engine.openEditor(account, 'settings-cas-loser');
+      try {
+        s.next(current); await drainMicrotasks();
+        expect(s.snapshots.replaceGeneration).toHaveBeenCalledWith('owner', previous, current, expect.any(Function));
+        expect(await s.engine.peekCached(account)).toEqual(third);
+        expect(editor.getState().checkpoint.confirmed).toEqual(previous);
+        expect(editor.getObservation().readiness).not.toBe('server');
+      } finally { editor.dispose(); s.engine.dispose(); }
+    });
+
+    it('fences an ordinary request already in flight when the listener reports a replacement', async () => {
+      const s = setup();
+      const address = keyOf('owner', account);
+      s.cache.set(address, previous);
+      const editor = await s.engine.openEditor(account, 'settings-in-flight-old-read');
+      try {
+        s.next(previous); await drainMicrotasks();
+        const oldRead = deferred<ResourceSnapshot>(), proof = deferred<ResourceSnapshot>();
+        jest.mocked(s.transport.read).mockReturnValueOnce(oldRead.promise).mockReturnValueOnce(proof.promise);
+        const refresh = s.observer.refresh(account);
+        await drainMicrotasks();
+        s.next(current);
+        expect(editor.getObservation().readiness).not.toBe('server');
+        s.next(previous);
+        oldRead.resolve(previous); await refresh; await drainMicrotasks();
+        expect(editor.getObservation().readiness).not.toBe('server');
+        expect(s.transport.read).toHaveBeenLastCalledWith('owner', account, { fresh: true });
+        proof.resolve(current); await drainMicrotasks();
+        expect(editor.getState().checkpoint.confirmed).toEqual(current);
+      } finally { editor.dispose(); s.engine.dispose(); }
+    });
+
+    it('retains a newer same-birth listener revision during confirmation of a stale replacement hint', async () => {
+      const s = setup();
+      const address = keyOf('owner', account);
+      const newer = version('previous-generation', 11, 'Newer words on the original');
+      s.cache.set(address, previous);
+      const editor = await s.engine.openEditor(account, 'settings-newer-version-during-proof');
+      try {
+        s.next(previous); await drainMicrotasks();
+        const proof = deferred<ResourceSnapshot>();
+        jest.mocked(s.transport.read).mockReturnValueOnce(proof.promise);
+        s.next(current); await drainMicrotasks();
+        s.next(newer); await drainMicrotasks();
+        expect(editor.getObservation().readiness).not.toBe('server');
+        proof.resolve(previous); await drainMicrotasks();
+        expect(editor.getState().checkpoint.confirmed).toEqual(newer);
+        expect(editor.getObservation()).toMatchObject({ snapshot: newer, readiness: 'server' });
+      } finally { editor.dispose(); s.engine.dispose(); }
+    });
+
+    it('keeps the newest listener revision once the fresh read proves the hinted birth', async () => {
+      const s = setup();
+      const address = keyOf('owner', account);
+      const newer = version('current-generation', 2, 'Newer words on the replacement');
+      s.cache.set(address, previous);
+      const editor = await s.engine.openEditor(account, 'settings-later-replacement-revision');
+      try {
+        const proof = deferred<ResourceSnapshot>();
+        jest.mocked(s.transport.read).mockReturnValueOnce(proof.promise);
+        s.next(current); await drainMicrotasks();
+        s.next(newer); await drainMicrotasks();
+        expect(editor.getObservation().readiness).not.toBe('server');
+        proof.resolve(current); await drainMicrotasks();
+        expect(editor.getState().checkpoint.confirmed).toEqual(newer);
+        expect(await s.engine.peekCached(account)).toEqual(newer);
+        expect(editor.getObservation()).toMatchObject({ snapshot: newer, readiness: 'server' });
+      } finally { editor.dispose(); s.engine.dispose(); }
+    });
+
+    it('does not publish a live replacement if that birth was deleted during verification', async () => {
+      const s = setup();
+      const address = keyOf('owner', account);
+      s.cache.set(address, previous);
+      const editor = await s.engine.openEditor(account, 'settings-replacement-deleted-during-proof');
+      try {
+        const proof = deferred<ResourceSnapshot>();
+        jest.mocked(s.transport.read).mockReturnValueOnce(proof.promise);
+        s.next(current); await drainMicrotasks();
+        s.next({ ...current, value: null, metadata: { ...current.metadata!, revision: 2, deleted: true } });
+        proof.resolve(current); await drainMicrotasks();
+        expect(editor.getObservation().readiness).not.toBe('server');
+        expect(editor.getState().checkpoint.confirmed).toEqual(previous);
+        expect(await s.engine.peekCached(account)).toEqual(previous);
+      } finally { editor.dispose(); s.engine.dispose(); }
+    });
+
+    it('cannot claim a same-birth update was stored if a tab installed a different birth first', async () => {
+      const s = setup();
+      const address = keyOf('owner', account);
+      const changed = version('current-generation', 2, 'Newer version of the second birth');
+      const third = version('third-generation', 1, 'Third birth');
+      s.cache.set(address, previous);
+      s.server.set(address, changed);
+      const editor = await s.engine.openEditor(account, 'settings-same-generation-cas-race');
+      s.cache.set(address, current);
+      jest.mocked(s.snapshots.replaceGeneration!).mockImplementationOnce(async () => {
+        s.cache.set(address, third);
+        s.server.set(address, third);
+        return third;
+      });
+      try {
+        s.next(changed); await drainMicrotasks();
+        expect(s.snapshots.replaceGeneration).toHaveBeenCalledWith('owner', current, changed, expect.any(Function));
+        expect(editor.getObservation().readiness).not.toBe('server');
+        expect(editor.getState().checkpoint.confirmed).toEqual(previous);
+        expect(await s.engine.peekCached(account)).toEqual(third);
+      } finally { editor.dispose(); s.engine.dispose(); }
+    });
+
+    it('proves the newer birth again after a tab writes an intermediate generation to the cache', async () => {
+      const s = setup();
+      const address = keyOf('owner', account);
+      const intermediate = version('intermediate-generation', 8, 'Another tab saw this');
+      s.cache.set(address, previous);
+      s.server.set(address, current);
+      jest.mocked(s.snapshots.replaceGeneration!).mockImplementationOnce(async () => {
+        s.cache.set(address, intermediate);
+        return intermediate;
+      });
+      const editor = await s.engine.openEditor(account, 'settings-prove-after-other-cache-write');
+      try {
+        s.next(current); await drainMicrotasks();
+        expect(s.transport.read).toHaveBeenCalledTimes(2);
+        expect(s.snapshots.replaceGeneration).toHaveBeenLastCalledWith('owner', intermediate, current, expect.any(Function));
+        expect(await s.engine.peekCached(account)).toEqual(current);
+        expect(editor.getState().checkpoint.confirmed).toEqual(current);
+      } finally { editor.dispose(); s.engine.dispose(); }
+    });
+
+    it('checks the current birth for a recovered editor even if another subscriber already confirmed it', async () => {
+      const s = setup();
+      const address = keyOf('owner', account);
+      s.cache.set(address, current);
+      s.server.set(address, current);
+      const active = await s.engine.openEditor(account, 'settings-shared-observer');
+      s.next(current); await drainMicrotasks();
+      const editorId = 'settings-recovered-older-birth';
+      const draft = { ...previous.value!, displayName: 'Recovered words' };
+      const session = new DataSession(previous);
+      session.edit(draft);
+      s.records.set(JSON.stringify(['owner', editorId]), {
+        owner: 'owner', editorId, checkpoint: session.checkpoint(), prepared: null, unfinalized: [],
+      });
+      try {
+        const recovered = await s.engine.openEditor(account, editorId);
+        try {
+          await drainMicrotasks();
+          expect(s.source.listen).toHaveBeenCalledTimes(1);
+          expect(s.transport.read).toHaveBeenCalledWith('owner', account, { fresh: true });
+          expect(recovered.getState().checkpoint).toMatchObject({ confirmed: previous, draft, dirty: true, remoteCandidate: current });
+          expect(active.getState().checkpoint.confirmed).toEqual(current);
+          s.next(current); await drainMicrotasks();
+          expect(s.transport.read).toHaveBeenCalledTimes(1);
+        } finally { recovered.dispose(); }
+      } finally { active.dispose(); s.engine.dispose(); }
+    });
+
+    it.each([false, true])('keeps replacement evidence across a late old receipt with later private work: %s', async laterWork => {
+      const s = setup();
+      const address = keyOf('owner', account);
+      s.cache.set(address, previous);
+      s.server.set(address, previous);
+      const deliveryStarted = deferred<void>(), releaseReceipt = deferred<void>();
+      jest.mocked(s.transport.send).mockImplementationOnce(async command => {
+        const result = applyCommand(command, previous);
+        deliveryStarted.resolve(undefined);
+        expect(result.kind).toBe('acknowledged');
+        await releaseReceipt.promise;
+        return result;
+      });
+      const editor = await s.engine.openEditor(account, 'settings-late-old-ack');
+      try {
+        await editor.commit(value => ({ ...value, displayName: 'Submitted before replacement' }));
+        await deliveryStarted.promise;
+        s.server.set(address, current);
+        s.next(current); await drainMicrotasks();
+        expect(editor.getState().checkpoint.remoteCandidate).toEqual(current);
+        const draft = { ...previous.value!, displayName: 'Words typed during the replacement' };
+        if (laterWork) await editor.edit(draft);
+        releaseReceipt.resolve(undefined);
+        await drainMicrotasks();
+        expect(editor.getState().checkpoint.pending).toEqual({});
+        if (laterWork) {
+          expect(editor.getState().checkpoint).toMatchObject({ draft, dirty: true, remoteCandidate: current });
+          expect(editor.getState().checkpoint.confirmed.metadata?.generation).toBe(previous.metadata?.generation);
+        } else {
+          expect(editor.getState().checkpoint).toMatchObject({ confirmed: current, draft: current.value, dirty: false, remoteCandidate: null });
+        }
+        expect(await s.engine.peekCached(account)).toEqual(current);
+        expect(s.transport.send).toHaveBeenCalledTimes(1);
+      } finally { releaseReceipt.resolve(undefined); editor.dispose(); s.engine.dispose(); }
+    });
+
+    it('uses the same fresh proof for the computed Bible marks address', async () => {
+      const s = setup();
+      const book = { collection: 'bibleMarks', id: marksDocumentId('owner', 'kjv', 'John') };
+      const address = keyOf('owner', book);
+      const value = { userId: 'owner', bible: 'kjv', book: 'John', verses: {} };
+      const oldBook = { ...previous, resource: book, value };
+      const newBook = { ...current, resource: book, value: { ...value, updatedAt: '2026-11-27T20:00:00Z' } };
+      s.cache.set(address, oldBook);
+      s.server.set(address, newBook);
+      const editor = await s.engine.openEditor(book, 'bible-marks-replacement');
+      try {
+        s.next(newBook); await drainMicrotasks();
+        expect(s.transport.read).toHaveBeenCalledWith('owner', book, { fresh: true });
+        expect(editor.getState().checkpoint).toMatchObject({ confirmed: newBook, draft: newBook.value, dirty: false });
+        expect(await s.engine.peekCached(book)).toEqual(newBook);
+        expect(s.transport.send).not.toHaveBeenCalled();
+      } finally { editor.dispose(); s.engine.dispose(); }
+    });
+
+    it('ignores a late former birth after proving the current birth', async () => {
+      const s = setup();
+      const address = keyOf('owner', account);
+      s.cache.set(address, previous);
+      s.server.set(address, current);
+      const editor = await s.engine.openEditor(account, 'settings-stale-resource-answer');
+      try {
+        s.next(current); await drainMicrotasks();
+        expect(editor.getState().checkpoint.confirmed).toEqual(current);
+        s.next(previous); await drainMicrotasks();
+        expect(editor.getState().checkpoint.confirmed).toEqual(current);
+        expect(await s.engine.peekCached(account)).toEqual(current);
+      } finally { editor.dispose(); s.engine.dispose(); }
+    });
+  });
 
   it.each(['title', 'type', 'unchanged title'] as const)('keeps the original reference time alongside %s', async field => {
     const s = setup({ nativeChoice: true });

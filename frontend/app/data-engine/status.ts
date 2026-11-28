@@ -6,6 +6,7 @@ import { sameManualSelection } from './manualScope';
 import { hasPlacedSketchIdCollision } from './sermonPlacedSketchRecovery';
 import { hasPrivateSermonPointMove } from './sermonPointMoveRecovery';
 import { hasUnreadableDraftProof } from './session';
+import { isStableResourceReplacement } from './stableResourceReplacement';
 import { shownDeliveryState } from './unanswered';
 import { waitsForServiceOrderPosition } from './unreadableDraftProof';
 
@@ -44,6 +45,8 @@ export interface SyncStatus {
   checking: boolean;
   readFailed: boolean;
   hasForeignChange: boolean;
+  /** Work still belongs to the previous document at this stable address. */
+  replacementPending?: true;
   canSave: boolean;
   canRemove: boolean;
   canAcceptRemote: boolean;
@@ -131,6 +134,7 @@ export function describeSync(state: EditorState, observation: Observation, deliv
   const terminal = delivery.length > 0 && delivery.every(entry => entry.state === 'conflict' || entry.state === 'refused');
   const settled = pendingIds.length === 0 || (state.savedIntentReplaceable ?? terminal);
   const deletedCandidate = foreign && candidate?.value === null;
+  const replacedCandidate = candidate && isStableResourceReplacement(checkpoint.confirmed, candidate);
   const groupCopyReview = Boolean(checkpoint.privateFieldReview?.groupCopySources?.length
     && readPrivateGroupTextReview(checkpoint)?.remaining.length);
   const phase = deliveryPhase(state, delivery, foreign, deletedCandidate, pendingIds.length, groupCopyReview);
@@ -139,8 +143,9 @@ export function describeSync(state: EditorState, observation: Observation, deliv
     phase, freshness: observation.readiness, checking: observation.checking, readFailed: observation.error,
     ...(phase === 'refused' && state.result?.kind === 'refused' && { refusalCode: state.result.code }),
     hasForeignChange: foreign,
-    canSave: checkpoint.dirty && state.durable && !state.preparing && hasUnqueuedGeneration && !refused && checkpoint.conflicts.length === 0 && !hasUnreadableDraftProof(checkpoint) && !hasPrivateSermonPointMove(checkpoint) && !deletedCandidate && !checkpoint.confirmed.metadata?.deleted,
-    canRemove: state.durable && !state.preparing && !checkpoint.confirmed.metadata?.deleted
+    ...(replacedCandidate && { replacementPending: true as const }),
+    canSave: checkpoint.dirty && state.durable && !state.preparing && hasUnqueuedGeneration && !refused && checkpoint.conflicts.length === 0 && !replacedCandidate && !hasUnreadableDraftProof(checkpoint) && !hasPrivateSermonPointMove(checkpoint) && !deletedCandidate && !checkpoint.confirmed.metadata?.deleted,
+    canRemove: state.durable && !state.preparing && !replacedCandidate && !checkpoint.confirmed.metadata?.deleted
       && ((pendingIds.length === 0 && checkpoint.confirmed.value !== null)
         || (!refused && (canRemovePendingCreation(state) || Boolean(pendingRemovalOpening(state))))),
     // A refusal has no other version to take, but "use the server's version" still means dropping

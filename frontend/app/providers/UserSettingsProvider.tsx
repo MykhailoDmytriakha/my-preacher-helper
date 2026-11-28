@@ -61,7 +61,7 @@ export function ReadingSettingsSync() {
   // Device storage known silent: a change now would wait behind it, so none is taken (the editor's own state may not say so yet).
   const silent = useSyncExternalStore(subscribeDeviceStorage, () => isStorageSilent(EDITOR_STORAGE), () => false);
   // Writable as the other settings are (`useUserSettings` busy): an editor, not a copy for reading, its storage keeping.
-  const writable = Boolean(document.state) && !document.readOnly && document.state?.durable !== false && !silent;
+  const writable = Boolean(document.state) && !document.readOnly && document.state?.durable !== false && !silent && !document.status?.replacementPending;
   // The editor's commit is a new function on every draw: the writer reaches the latest through a ref, and is handed to the
   // stores again only when writing becomes possible or impossible.
   const commit = useRef(document.commit);

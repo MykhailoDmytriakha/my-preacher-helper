@@ -24,7 +24,8 @@ export function useUserSettings(userId: string | null | undefined) {
   const source = useSettingsEngine();
   const document = source && source.owner === userId ? source.document : null;
   const readOnly = !document?.state || document.readOnly;
-  const busy = readOnly || Boolean(document?.state?.preparing) || document?.state?.durable === false;
+  const busy = readOnly || Boolean(document?.state?.preparing) || document?.state?.durable === false
+    || document?.status?.replacementPending === true;
   const patch = async (value: Partial<UserSettings>): Promise<void> => {
     if (!document) throw new Error('The settings editor is not ready');
     await document.commit(current => {

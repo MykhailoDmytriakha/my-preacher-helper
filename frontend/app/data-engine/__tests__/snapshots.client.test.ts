@@ -1,5 +1,6 @@
 import { createStore, get, update } from 'idb-keyval';
 import { createIndexedDbSnapshots, subscribeSnapshotChanges } from '../snapshots.client';
+import { installStorageHarness } from './storageHarness';
 import type { ResourceSnapshot } from '../types';
 
 jest.mock('idb-keyval', () => ({ createStore: jest.fn(() => 'snapshots'), get: jest.fn(), update: jest.fn() }));
@@ -53,6 +54,36 @@ describe('Confirmed snapshot cache', () => {
     const deleted = { ...snapshot(3), value: null, metadata: { ...snapshot(3).metadata!, deleted: true } };
     expect(modify(deleted)).toEqual(deleted);
     commit(); await writing; expect(done).toBe(true);
+  });
+
+  it('replaces the exact earlier birth atomically and only publishes on completed storage', async () => {
+    const originalStore = jest.mocked(createStore).getMockImplementation()!;
+    const storage = installStorageHarness();
+    const store = createIndexedDbSnapshots();
+    const profile = { collection: 'users', id: 'owner' };
+    const old = { ...snapshot(9), resource: profile, value: { language: 'en' } };
+    const replacement = { ...old, metadata: { ...old.metadata!, generation: 'new', revision: 1 } };
+    const raced = { ...old, metadata: { ...old.metadata!, revision: 10 } };
+    const key = JSON.stringify(JSON.stringify(['owner', 'users', 'owner']));
+    const changed = jest.fn();
+    const unsubscribe = subscribeSnapshotChanges('owner', changed);
+    try {
+      storage.rows.set(key, raced);
+      await expect(store.replaceGeneration!('owner', old, replacement, () => true)).resolves.toEqual(raced);
+      expect(storage.rows.get(key)).toEqual(raced);
+      expect(changed).not.toHaveBeenCalled();
+      storage.holdCompletionAfterCommit = (_rows, mode) => mode === 'readwrite';
+      const writing = store.replaceGeneration!('owner', raced, replacement, () => true);
+      for (let index = 0; index < 30; index++) await Promise.resolve();
+      expect(storage.rows.get(key)).toEqual(replacement);
+      expect(changed).not.toHaveBeenCalled();
+      storage.finishCompletion();
+      await expect(writing).resolves.toEqual(replacement);
+      expect(changed).toHaveBeenCalledWith(profile);
+    } finally {
+      jest.mocked(createStore).mockImplementation(originalStore);
+      unsubscribe();
+    }
   });
 
   it('uses owner/resource partitions and distinguishes a cache miss from a stored tombstone', async () => {

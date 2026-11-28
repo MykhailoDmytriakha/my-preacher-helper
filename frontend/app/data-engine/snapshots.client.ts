@@ -11,6 +11,7 @@ import { updateStoredValue } from '@/utils/storageUpdate';
 import { equalValues } from './protocol';
 import { canReplaceSnapshot, storesNewCopy } from './snapshotFreshness';
 import { snapshotBelongsToOwner } from './snapshotIdentity';
+import { hasStableResourceAddress, isStableResourceReplacement } from './stableResourceReplacement';
 import { snapshotSchema } from './transport.client';
 
 import type { CollectionSnapshotStore } from './collections';
@@ -95,6 +96,25 @@ export function createIndexedDbSnapshots(): CollectionSnapshotStore {
       }, database());
       // Only a completed transaction is evidence. A refused/unchanged candidate wakes nobody.
       if (changed) notifySnapshotChange(owner, frozen.resource);
+    },
+    async replaceGeneration(owner, expected, snapshot, stillCurrent) {
+      const resource = snapshot.resource;
+      if (!hasStableResourceAddress(resource)) throw new Error('Invalid snapshot generation replacement');
+      const previous = expected && validate(owner, resource, expected);
+      const incoming = validate(owner, resource, snapshot);
+      const rowKey = key(owner, resource);
+      let changed = false;
+      const stored = await createStorageTransaction(database)<ResourceSnapshot | undefined>('readwrite', (store, read, done) => {
+        read(store.get(rowKey), value => {
+          const current = value === undefined ? undefined : validate(owner, resource, value);
+          changed = stillCurrent() && equalValues(current, previous)
+            && (storesNewCopy(current, incoming) || isStableResourceReplacement(current, incoming));
+          if (changed) store.put(incoming, rowKey);
+          done(changed ? incoming : current);
+        });
+      });
+      if (changed) notifySnapshotChange(owner, resource);
+      return stored;
     },
     async putPage(owner, snapshots) {
       if (!snapshots.length) return [];

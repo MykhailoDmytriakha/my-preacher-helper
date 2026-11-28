@@ -56,6 +56,7 @@ import { acknowledgeServiceOrderInput, projectServiceOrderInput, readServiceOrde
 import { keepSavedStepPositions, placementSteps, returnedPlacementAnchors, unreadableStepPosition } from './serviceOrderStepPlacement';
 import { canReplaceSnapshot } from './snapshotFreshness';
 import { projectSourceNoteChoices } from './sourceNoteLinkCapture';
+import { isStableResourceReplacement } from './stableResourceReplacement';
 import { canceledStudyNoteBody, captureUnsubmittedNoteReturn, matchesUnsubmittedNoteReturn, traceUnsubmittedNoteDeletion, unseenStudyNoteField, type StudyNoteContentReturn } from './studyNoteContentCapture';
 import { assertLegacyCommentLocalChoice, projectLegacyStudyComment, projectLegacyStudyNote, reviseLegacyCommentConflicts, type LegacyStudyNoteImport } from './studyNoteLegacyDraft';
 import { chooseStudyNoteReferences } from './studyNoteReferenceChoice';
@@ -873,7 +874,8 @@ export class DataSession {
     this.replaceDraft(groupMoves.length ? restoreGroupPlacementOrder(nextDraft) : nextDraft);
     const placementConflicts = preserveHardQuestionPlacementComparison(this.state, rebased.conflicts, accepted);
     this.state.conflicts = copy(preservePlanCellComparisons(this.state, placementConflicts));
-    this.state.remoteCandidate = this.state.conflicts.length ? copy(accepted) : null;
+    this.state.remoteCandidate = candidate && isStableResourceReplacement(accepted, candidate) ? candidate
+      : this.state.conflicts.length ? copy(accepted) : null;
     this.settleHeldFieldsAfterDelivery(accepted, result.snapshot);
     this.state.dirty = !equalValues(this.state.draft, accepted.value) || hasHeldAutosaveFields(this.state)
       || hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state);
@@ -976,8 +978,29 @@ export class DataSession {
       || hasUncapturedAutosaveField(this.state) || hasUncapturedAutosaveRowField(this.state);
   }
 
+  /** The fresh read establishes a new birth. Any local work keeps its original opening. */
+  observeReplacement(snapshot: ResourceSnapshot, replacedGeneration: string, preserveDraft: boolean): boolean {
+    const { confirmed, remoteCandidate, dirty, pending, conflicts } = this.state;
+    if (!isStableResourceReplacement(confirmed, snapshot)) return false;
+    if (confirmed.metadata?.generation !== replacedGeneration) return false;
+    if (remoteCandidate && remoteCandidate.metadata?.generation === snapshot.metadata?.generation
+      && !canReplaceSnapshot(remoteCandidate, snapshot)) return false;
+    if (dirty || Object.keys(pending).length || conflicts.length || hasUnreadableDraftProof(this.state) || preserveDraft) {
+      this.state.remoteCandidate = copy(snapshot);
+    } else {
+      this.state.confirmed = copy(snapshot);
+      this.replaceDraft(snapshot.value);
+      this.clearAutosaveFieldDrafts();
+      this.state.remoteCandidate = null;
+    }
+    return true;
+  }
+
   observe(snapshot: ResourceSnapshot, { source, preserveDraft }: { source: 'server' | 'cache'; preserveDraft?: boolean }): void {
     if (!this.matches(snapshot) || this.isOlder(snapshot)) return;
+    // An ordinary echo for the earlier birth cannot retire an already held replacement.
+    const replacement = this.state.remoteCandidate;
+    if (replacement && isStableResourceReplacement(this.state.confirmed, replacement)) return;
     // An unverified candidate can acquire an ordinary conflict during ACK rebasing.
     if (source === 'cache' && this.waitsForReturnedRowVersion(snapshot)) return;
     // A versioned tombstone survives acknowledgement collection. A cache miss proves nothing.

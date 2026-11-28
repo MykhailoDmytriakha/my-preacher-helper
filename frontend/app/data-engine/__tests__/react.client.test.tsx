@@ -912,6 +912,29 @@ describe('React DataEngine contract', () => {
     expect(createBrowserDataEngine).not.toHaveBeenCalled();
   });
 
+  it('fences an input callback rendered before the engine moved a Bible marks editor to another birth', async () => {
+    const book = { collection: 'bibleMarks', id: 'owner_kjv_john' };
+    const s = makeEditor();
+    const old = { ...snapshot(), resource: book, value: { userId: 'owner', bible: 'kjv', book: 'John', verses: {} } };
+    const current = { ...old, metadata: { ...old.metadata!, generation: 'new-book' },
+      value: { ...old.value, verses: { v3_16: { m: '0-1:y' } } } };
+    s.setState({ ...s.state, checkpoint: { ...s.state.checkpoint, confirmed: old, draft: old.value } });
+    jest.mocked(createBrowserDataEngine).mockReturnValue(makeBrowser(s.editor).browser);
+    const { result } = renderHook(() => useDataDocument(book), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.confirmed).toEqual(old));
+    const fromEarlierScreen = result.current.commit;
+    await act(async () => {
+      s.setState({ ...s.state, checkpoint: { ...s.state.checkpoint, confirmed: current, draft: current.value } });
+    });
+    const erase = jest.fn(value => ({ ...value, verses: {} }));
+    await act(async () => {
+      await expect(fromEarlierScreen(erase, 'bible-mark-stroke')).rejects.toMatchObject({ code: 'decision-changed' });
+    });
+    expect(erase).not.toHaveBeenCalled();
+    expect(s.editor.commit).not.toHaveBeenCalled();
+    expect(result.current.data).toEqual(current.value);
+  });
+
   it('forwards explicit remove and cancels the pending autosave timer', async () => {
     const s = makeEditor(); const b = makeBrowser(s.editor); jest.mocked(createBrowserDataEngine).mockReturnValue(b.browser);
     const { result } = renderHook(() => useDataDocument(resource), { wrapper: Wrapper });
