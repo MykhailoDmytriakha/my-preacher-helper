@@ -11319,3 +11319,15 @@ At 1280 px, 20 out of 20 notes rendered both before and after the change. The ra
 After an authorized release, open one test note a few times in a single tab, save an identifiable line, and reopen it. Verify that the text persists and record status and Retry-After if a genuine 503 returns. Keep the held-transaction fixture on the local emulator.
 
 Local case evidence: `artifacts/store-read-locks-20261127/`.
+
+## BUG-20261030-worker-background-get-failures · Match cancelled prefetches to the previous page
+
+Bible → John 3:16–17 → Analysis. At local head `209cd226a`, real Chrome split the passage with the editor's New line control and saved it. The same revision and exact 47 words in two parts reopened after each reload at 1280, 390 and 1024 px. A separate control note also retained its exact source revision. Chrome ran without a visible window with local Auth and Firestore emulators.
+
+Holding the first bytes of background RSC bodies for 800 ms, then reloading while the old document was still fetching, gave five worker `ERR_FAILED` events. Each had the same response ID in the worker, the browser page and the proxy. The outgoing page reported `ERR_ABORTED` at replacement of its document; the worker ended within 15 ms of that replacement. All five HTTP 200 responses had zero body bytes delivered. In the delay-matched control, all nine held bodies finished before reloading and the worker logged no failures. The natural run completed all 33 traced proxy requests with HTTP 200. The same worker remained attached for all three reloads in each run. There were no page exceptions, and I inspected the reloaded mobile and wide analysis screens.
+
+That establishes what happened in the controlled reload. The original nine events lack matching request and document identities. The historical entry remains open. The largest sampled Next.js process was 386 MiB, and all eight local ports were released.
+
+For any separately authorized deployment check, save and reload one disposable analysis, then check the exact edited line. If a natural failure occurs, capture its full URL, CDP loader ID and the response lifecycle before comparing it with this run. The timed proxy belongs to the local stand.
+
+Local case evidence: `artifacts/worker-prefetch-trace-20261127/`.
