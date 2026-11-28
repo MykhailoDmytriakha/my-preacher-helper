@@ -64,6 +64,22 @@ describe('ModeToggle compact menu', () => {
     expect(screen.getByRole('button', { name: 'Scratch notes' })).toHaveFocus();
   });
 
+  it('opens the compact options without waiting for an animation frame', async () => {
+    const user = userEvent.setup();
+    const frame = jest.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 1);
+    try {
+      render(<ControlledToggle />);
+      const button = screen.getByRole('button', { name: 'Scratch notes' });
+      await user.click(button);
+
+      expect(button).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByRole('listbox')).not.toHaveAttribute('data-closed');
+      expect(screen.getAllByRole('option')).toHaveLength(3);
+    } finally {
+      frame.mockRestore();
+    }
+  });
+
   it('preserves selection when resizing between menu and desktop segments', async () => {
     const user = userEvent.setup();
     render(<ControlledToggle />);

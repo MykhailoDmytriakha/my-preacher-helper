@@ -11345,3 +11345,15 @@ In headless Chrome at 390 px with local Auth and Firestore emulators, the new bu
 After an authorized release, use one disposable group in one tab. Save a venue, return to Groups and reopen. Repeat once. Confirm the date, audience and latest venue. Enter a partial date and another venue, leave, then recover the saved draft before completing the date. Keep interruption and exact receipt fixtures on the local emulator.
 
 Local case evidence: `artifacts/meeting-form-retention-20261127/`.
+
+## BUG-20261102-phone-mode-menu-invisible · Show compact sermon modes as soon as the menu opens
+
+Sermons → a sermon → select Classic again → Sort the scratch notes → reopen the compact mode menu. With animation callbacks held on the old build, the button announced an expanded menu while all three option labels remained transparent. Chrome reported opacity zero across four samples while the page stayed visible. The menu appeared after the callbacks were released.
+
+The compact dropdown now opens without the options transition. The button's arrow, options, colors, anchoring and mode selection use their existing styles and controls. The regression test failed on the old component and passed with the change. The four focused suites passed 28 tests. Scoped lint, TypeScript and the local production-mode build passed.
+
+In headless Chrome at 390 × 844 with local Auth and Firestore, all three choices were fully visible and hit-testable in all four samples while callbacks were still held. A pointer click chose Classic and closed the menu while the callbacks were held. Normal and reduced-motion controls also passed. ArrowDown opened the options, Escape closed them, and focus returned to the trigger. The exact stored sermon and its scratch words stayed at the original revision in each run. I inspected the old transparent menu state and the fixed dropdown. The final Next.js process peaked at 284 MiB sampled memory, and all seven local ports were released.
+
+The original report did not capture frame timing. The local replay demonstrates the disclosed failure mode and removes the dropdown's dependency on the next animation frame. After an authorized release, open one disposable sermon on a narrow screen, choose Classic, enter Scratch with Sort, reopen the mode selector and choose Classic again. Confirm the options and the saved scratch words.
+
+Local case evidence: `artifacts/phone-mode-first-paint-20261127/`.

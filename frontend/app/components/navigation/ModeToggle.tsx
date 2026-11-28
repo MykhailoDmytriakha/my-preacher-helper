@@ -103,7 +103,7 @@ const ModeToggle: React.FC<ModeToggleProps> = ({
               <path d="m5 7.5 5 5 5-5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </ListboxButton>
-          <ListboxOptions anchor="bottom" transition modal={false} className="z-50 w-[var(--button-width)] origin-top rounded-[28px] border border-gray-200 bg-white p-1 shadow-lg [--anchor-gap:6px] focus:outline-none transition duration-200 ease-out data-[closed]:scale-95 data-[closed]:opacity-0 motion-reduce:transition-none dark:border-gray-700 dark:bg-gray-800">
+          <ListboxOptions anchor="bottom" modal={false} className="z-50 w-[var(--button-width)] rounded-[28px] border border-gray-200 bg-white p-1 shadow-lg [--anchor-gap:6px] focus:outline-none dark:border-gray-700 dark:bg-gray-800">
             {segments.map((segment) => (
               <ListboxOption key={segment.mode} value={segment.mode} className="group flex h-12 cursor-pointer items-center justify-center gap-1 rounded-full px-4 text-sm font-semibold text-gray-700 transition-colors data-[focus]:bg-violet-50 data-[selected]:bg-gradient-to-r data-[selected]:from-violet-600 data-[selected]:to-fuchsia-600 data-[selected]:text-white dark:text-gray-200 dark:data-[focus]:bg-gray-700">
                 <span className="truncate">{segment.label}</span>
