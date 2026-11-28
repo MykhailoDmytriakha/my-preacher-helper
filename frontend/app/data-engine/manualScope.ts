@@ -484,9 +484,18 @@ export class ManualScope {
     });
   }
 
-  retire(options: { finishPending?: boolean } = {}): LocalWriteHandoff {
-    return retireLocalWrite({ owner: this.record.owner, kind: 'manual', id: this.record.scopeId, resource: this.record.resource },
+  retire(options: { finishPending?: boolean; endCleanOpening?: boolean } = {}): LocalWriteHandoff {
+    const handoff = retireLocalWrite({ owner: this.record.owner, kind: 'manual', id: this.record.scopeId, resource: this.record.resource },
       this.queue, () => this.dispose(), () => this.durable, () => this.writeLocal(), options.finishPending);
+    if (!options.endCleanOpening) return handoff;
+    return { ...handoff, persist: async () => {
+      await handoff.persist();
+      // The UI can leave before its Save continuation has closed the stage.
+      if (this.record.active && !this.hasChanges() && !this.captures.pending) {
+        this.record.active = false;
+        await this.writeLocal();
+      }
+    } };
   }
 
   private value(): DocumentData { return project(this.record.predecessor?.value ?? this.record.baseline.value!, this.record.selection, this.record.stage); }

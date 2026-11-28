@@ -51,10 +51,11 @@ export function createIndexedDbMembershipScopes(): MembershipScopeStore {
       owner: record.owner, key: key(record.owner, record.scopeId), expected: record,
       validate: candidate => validated(candidate as MembershipScopeRecord, record.owner, record.scopeId),
       references, scopeId: record.scopeId, canRemove: current => current.phase === 'editing' && current.requestIds.length === 0,
-      isCurrent, remove: (store, current) => {
+      isCurrent, remove: (store, current, _read, done) => {
         store.put({ owner: current.owner, scopeId: current.scopeId, revision: current.revision + 1, closed: true,
           outcome: 'cancelled' } satisfies ScopeWatermark, key(current.owner, current.scopeId));
         store.delete(referenceKey(current.owner, current.scopeId));
+        done();
       },
     }),
     completion: (owner, scopeId) => transaction('readonly', (store, read, done) => read(store.get(key(owner, scopeId)), (value: ScopeRow | ScopeWatermark | undefined) => {

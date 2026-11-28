@@ -4,9 +4,9 @@ import { documentEngineHarness, settleEngine } from '@test-utils/documentEngineH
 import { collectAbandonedOrdinaryEditors } from '../abandonedOrdinaryEditors.client';
 import { checkpointKey } from '../checkpointStorage.client';
 import { createIndexedDbCommitStore } from '../commits.client';
-import { retirableEditorIdentity } from '../editorIdentity';
+import { retirableEditorIdentity, retirableManualScopeIdentity } from '../editorIdentity';
 import { createOrdinaryEditorLeases } from '../ordinaryEditorLeases.client';
-import { activeOrdinaryEditorKey, commitGenerationKey } from '../retention.client';
+import { activeOrdinaryEditorKey, commitGenerationKey, manualStorageKey } from '../retention.client';
 import { installStorageHarness } from './storageHarness';
 
 import type { CommitRequest } from '../commits';
@@ -160,6 +160,54 @@ it('keeps the writing lease until a live tab can retry its failed closing save',
     await waitFor(() => expect(storage.rows.has(active(id))).toBe(false));
     expect(lock.isHeld(lease)).toBe(false);
   } finally { storage.writeFailureFor = undefined; tab.dispose(); }
+});
+
+it('holds parent admission for a manual Save invoked while a native stage is finishing', async () => {
+  const lock = locksByDocument();
+  const h = documentEngineHarness({
+    ...original, metadata: { protocol: 1, generation: 'note-generation', revision: 1, deleted: false },
+  }, { editorLeases: lock.leases });
+  storage = h.storage;
+  const tab = h.createBrowser();
+  tab.engine.setOwner(owner); tab.engine.setOnline(false);
+  const id = opening('manual-save-and-leave');
+  const scope = retirableManualScopeIdentity(id, 'content');
+  const key = JSON.stringify(manualStorageKey(owner, scope));
+  let held = false;
+  try {
+    const editor = await tab.engine.openEditor(resource, id);
+    const form = editor.form('content', [['content']]);
+    await form.begin();
+    expect(form.getState()?.record.scopeId).toBe(scope);
+    storage.holdCompletionAfterCommit = (rows, mode) => {
+      const stage = rows.get(key) as { record?: { stage?: { value?: string }[] } } | undefined;
+      if (held || mode !== 'readwrite' || stage?.record?.stage?.[0]?.value !== 'Words during close') return false;
+      held = true;
+      return true;
+    };
+    const editing = form.update(value => ({ ...value, content: 'Words during close' })).catch(error => error);
+    const saving = form.save().catch(error => error);
+    await waitFor(() => expect(held).toBe(true));
+    editor.close({ flush: false });
+    await settleEngine();
+    expect(storage.rows.has(active(id))).toBe(true);
+    expect(lock.isHeld(leaseId(id))).toBe(true);
+    storage.finishCompletion();
+    await Promise.all([editing, saving]);
+    await waitFor(() => expect(storage.rows.has(active(id))).toBe(false));
+    expect(await h.commits.list(owner)).toEqual([expect.objectContaining({
+      editorId: scope, value: { ...original.value, content: 'Words during close' },
+    })]);
+    tab.engine.setOnline(true);
+    await tab.engine.retry(resource);
+    await waitFor(() => expect(h.server.value?.content).toBe('Words during close'));
+    await waitFor(() => expect(storage.rows.has(key)).toBe(false));
+    expect(storage.rows.has(generation(scope))).toBe(false);
+  } finally {
+    storage.holdCompletionAfterCommit = undefined;
+    storage.finishCompletion();
+    tab.dispose();
+  }
 });
 
 it('preserves a row changed after discovery and falls back when browser locking fails', async () => {

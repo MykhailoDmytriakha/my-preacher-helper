@@ -1,12 +1,14 @@
 'use client';
 
-import { isRetirableOrdinaryEditor, protectedSermonRecoveryKind, RETIRABLE_EDITOR_PREFIX } from './editorIdentity';
+import { captureLifetimeEditor, manualScopeParentPrefix, protectedSermonRecoveryKind, retirableManualParent,
+  RETIRABLE_EDITOR_PREFIX, RETIRABLE_MANUAL_SCOPE_PREFIX } from './editorIdentity';
 import { collectReleasedAtomicGenerations } from './leasedAtomicRetention.client';
 import { awaitingManualReceipt, type ManualScopeRecord } from './manualScope';
 import { createEngineStorageTransaction, engineOwnerRange, type StorageRead } from './storage.client';
 
 import type { CommitRequest } from './commits';
 import type { EditorRecord } from './controller';
+import type { ManualStorageRecord } from './manualScopes.client';
 import type { OrdinaryEditorLeases } from './ordinaryEditorLeases.client';
 
 export const COMMIT_ROW_KINDS = ['request', 'atomic-request', 'creation-request', 'council-carry-request',
@@ -33,6 +35,35 @@ export const commitRowKey = (request: CommitRow, kind: string = commitRowKind(re
   [kind, request.owner, request.editorId, request.editGeneration];
 export const activeOrdinaryEditorKey = (owner: string, editorId: string): IDBValidKey => ['ordinary-editor', owner, editorId];
 export const commitGenerationKey = (request: Pick<CommitRequest, 'owner' | 'editorId'>): IDBValidKey => ['generation', request.owner, request.editorId];
+export const manualStorageKey = (owner: string, scopeId: string): IDBValidKey => ['manual', owner, scopeId];
+
+export function removeRetiredManualScope(store: IDBObjectStore, owner: string, scopeId: string): void {
+  store.delete(manualStorageKey(owner, scopeId));
+  store.delete(commitGenerationKey({ owner, editorId: scopeId }));
+}
+
+function ownsTerminalManualWatermark(row: ManualStorageRecord | undefined, owner: string, parent: string, scope: string): boolean {
+  return row?.record === null && row.owner === owner && row.parentEditorId === parent && row.scopeId === scope
+    && Array.isArray(row.commitReferences) && !row.commitReferences.length;
+}
+
+/** Called after the parent admission is removed, in the same transaction. */
+export function retireCleanManualScopes(store: IDBObjectStore, read: StorageRead, owner: string, parent: string, done: () => void): void {
+  const prefix = manualScopeParentPrefix(parent);
+  const range = IDBKeyRange.bound(['manual', owner, prefix], ['manual', owner, prefix + '\uffff']);
+  read(store.getAllKeys(range), keys => {
+    let remaining = keys.length;
+    if (!remaining) { done(); return; }
+    for (const key of keys) read(store.get(key), (row: ManualStorageRecord | undefined) => {
+      const scope = Array.isArray(key) && typeof key[2] === 'string' ? key[2] : null;
+      if (scope && retirableManualParent(scope) === parent && ownsTerminalManualWatermark(row, owner, parent, scope)) {
+        removeRetiredManualScope(store, owner, scope);
+      }
+      if (!--remaining) done();
+    });
+  });
+}
+
 export const commitProjectionKey = (owner: string, id: string): IDBValidKey => ['reference', owner, 'projection', id];
 /** Separate from editor projection: even older checkpoint writers must retain uncached ACKs. */
 export const commitSnapshotKey = (owner: string, id: string): IDBValidKey => ['reference', owner, 'accepted-cache', id];
@@ -130,8 +161,9 @@ export function collectCommitRows(store: IDBObjectStore, read: StorageRead, owne
         store.put({ through: Math.max(previous?.through ?? 0, through) }, key);
         collected();
       });
-      if (isRetirableOrdinaryEditor(editorId)) {
-        read(store.get(activeOrdinaryEditorKey(owner, editorId)), active => {
+      const lifetime = captureLifetimeEditor(editorId);
+      if (lifetime) {
+        read(store.get(activeOrdinaryEditorKey(owner, lifetime)), active => {
           if (active) protect();
           else { store.delete(key); collected(); }
         });
@@ -185,18 +217,31 @@ export function createCommitCollectionWindow(leases?: Pick<OrdinaryEditorLeases,
       await transaction<void>('readwrite', (store, read, done) => {
         const compact = () => collectCommitRows(store, read, owner, () => done(undefined));
         // An older page may have swept a request after its editor retired.
-        const scope = ['generation', owner];
-        const range = IDBKeyRange.bound([...scope, RETIRABLE_EDITOR_PREFIX], [...scope, RETIRABLE_EDITOR_PREFIX + '\uffff']);
-        read(store.getAllKeys(range), keys => {
-          const editors = keys.flatMap(key => Array.isArray(key) && typeof key[2] === 'string'
-            && isRetirableOrdinaryEditor(key[2]) ? [key[2]] : []);
-          let remaining = editors.length;
-          if (!remaining) { compact(); return; }
-          for (const editorId of editors) read(store.get(activeOrdinaryEditorKey(owner, editorId)), active => {
-            if (!active) store.delete(commitGenerationKey({ owner, editorId }));
-            if (!--remaining) compact();
+        const scans = [['generation', RETIRABLE_EDITOR_PREFIX], ['generation', RETIRABLE_MANUAL_SCOPE_PREFIX],
+          ['manual', RETIRABLE_MANUAL_SCOPE_PREFIX]] as const;
+        let checking = scans.length;
+        const checked = () => { if (!--checking) compact(); };
+        for (const [kind, prefix] of scans) {
+          const range = IDBKeyRange.bound([kind, owner, prefix], [kind, owner, prefix + '\uffff']);
+          read(store.getAllKeys(range), keys => {
+            const editors = keys.flatMap(key => {
+              const editorId = Array.isArray(key) && typeof key[2] === 'string' ? key[2] : null;
+              const lifetime = editorId && captureLifetimeEditor(editorId);
+              return editorId && lifetime ? [{ editorId, lifetime }] : [];
+            });
+            let remaining = editors.length;
+            if (!remaining) { checked(); return; }
+            const visited = () => { if (!--remaining) checked(); };
+            for (const { editorId, lifetime } of editors) read(store.get(activeOrdinaryEditorKey(owner, lifetime)), active => {
+              if (active) { visited(); return; }
+              if (kind === 'generation') { store.delete(commitGenerationKey({ owner, editorId })); visited(); return; }
+              read(store.get(manualStorageKey(owner, editorId)), (row: ManualStorageRecord | undefined) => {
+                if (ownsTerminalManualWatermark(row, owner, lifetime, editorId)) removeRetiredManualScope(store, owner, editorId);
+                visited();
+              });
+            });
           });
-        });
+        }
       });
       if (leases) await collectReleasedAtomicGenerations(transaction, owner, leases).catch(() => undefined);
     };

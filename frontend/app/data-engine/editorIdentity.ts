@@ -159,16 +159,42 @@ export function manualScopeIdentity(parentEditorId: string, slot: string, suffix
   return JSON.stringify(suffix === undefined ? [parentEditorId, 'manual', slot] : [parentEditorId, 'manual', slot, suffix]);
 }
 
-export function readManualScopeIdentity(scopeId: string): { parentEditorId: string; slot: string } | null {
+const RETIRABLE_MANUAL_SUFFIX = 'retirable-manual-v1:';
+export const RETIRABLE_MANUAL_SCOPE_PREFIX = JSON.stringify([RETIRABLE_EDITOR_PREFIX]).slice(0, -2);
+
+export function manualScopeParentPrefix(parentEditorId: string): string {
+  return JSON.stringify([parentEditorId, 'manual']).slice(0, -1) + ',';
+}
+
+export function retirableManualScopeIdentity(parentEditorId: string, slot: string, suffix = ''): string {
+  return manualScopeIdentity(parentEditorId, slot, RETIRABLE_MANUAL_SUFFIX + suffix);
+}
+
+function manualScopeParts(scopeId: string): [string, 'manual', string, string?] | null {
   try {
     const parts: unknown = JSON.parse(scopeId);
     if (!Array.isArray(parts) || (parts.length !== 3 && parts.length !== 4) || parts[1] !== 'manual'
       || !parts.every(part => typeof part === 'string' && part.length > 0)
       || scopeId !== manualScopeIdentity(parts[0], parts[2], parts[3])) return null;
-    return { parentEditorId: parts[0], slot: parts[2] };
+    return [parts[0], 'manual', parts[2], parts[3]];
   } catch {
     return null;
   }
+}
+
+export function readManualScopeIdentity(scopeId: string): { parentEditorId: string; slot: string } | null {
+  const parts = manualScopeParts(scopeId);
+  return parts && { parentEditorId: parts[0], slot: parts[2] };
+}
+
+/** Only new explicit forms with a tracked parent use its durable admission. */
+export function retirableManualParent(scopeId: string): string | null {
+  const parts = manualScopeParts(scopeId);
+  return parts && parts[3]?.startsWith(RETIRABLE_MANUAL_SUFFIX) && isRetirableOrdinaryEditor(parts[0]) ? parts[0] : null;
+}
+
+export function captureLifetimeEditor(editorId: string): string | null {
+  return isRetirableOrdinaryEditor(editorId) ? editorId : retirableManualParent(editorId);
 }
 
 function tabForEditor(editorId: string, resource: ResourceRef, oneShot = false): string | null {

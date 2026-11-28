@@ -3,7 +3,7 @@
 import { checkpointKey } from './checkpointStorage.client';
 import { isRetirableOrdinaryEditor } from './editorIdentity';
 import { readOrdinaryEditorLease, type OrdinaryEditorLeases } from './ordinaryEditorLeases.client';
-import { activeOrdinaryEditorKey, COMMIT_ROW_KINDS, commitGenerationKey } from './retention.client';
+import { activeOrdinaryEditorKey, COMMIT_ROW_KINDS, commitGenerationKey, retireCleanManualScopes } from './retention.client';
 import { createEngineStorageTransaction, engineOwnerRange } from './storage.client';
 
 interface Candidate {
@@ -41,8 +41,8 @@ export async function collectAbandonedOrdinaryEditors(owner: string, leases: Pic
             if (!retained) {
               store.delete(key);
               store.delete(commitGenerationKey({ owner, editorId }));
-            }
-            done(undefined);
+              retireCleanManualScopes(store, read, owner, editorId, () => done(undefined));
+            } else done(undefined);
           });
         });
       });

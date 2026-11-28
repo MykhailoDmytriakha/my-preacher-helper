@@ -1,10 +1,10 @@
 import { createIndexedDbCheckpoints } from '../checkpoint.client';
 import { createIndexedDbCommitStore } from '../commits.client';
-import { manualChoiceRecoveryIdentity } from '../editorIdentity';
+import { manualChoiceRecoveryIdentity, manualScopeIdentity, retirableEditorIdentity, retirableManualScopeIdentity } from '../editorIdentity';
 import { DataEngine } from '../engine';
 import { ResourceObserver } from '../observer';
 import { forkCheckpoint, recoveryCheckpointId } from '../recovery.client';
-import { collectCommitRows, commitProjectionKey, createCommitCollectionWindow } from '../retention.client';
+import { collectCommitRows, commitProjectionKey, createCommitCollectionWindow, manualStorageKey } from '../retention.client';
 import { DataEngineRuntime } from '../runtime';
 import { DataSession } from '../session';
 import { createEngineStorageTransaction, engineOwnerRange, validateCommitReferences } from '../storage.client';
@@ -196,6 +196,30 @@ it('clears markers written by an older collection pass for retired recovery open
   await collection.begin('owner')();
   expect(storage.rows.has(key)).toBe(false);
   expect(storage.rows.get(oldKey)).toEqual({ through: 9 });
+});
+
+it('clears a terminal manual marker a previous bundle wrote after the parent was closed', async () => {
+  const commits = createIndexedDbCommitStore();
+  const parent = retirableEditorIdentity('older-ack', snapshot.resource, 'study-note', 'closed');
+  const living = retirableEditorIdentity('live', snapshot.resource, 'study-note', 'open');
+  const old = manualScopeIdentity(parent, 'content');
+  const modern = retirableManualScopeIdentity(parent, 'content');
+  const live = retirableManualScopeIdentity(living, 'content');
+  await commits.activateOrdinaryEditor!('owner', living);
+  for (const [scopeId, parentEditorId] of [[modern, parent], [old, parent], [live, living]]) {
+    storage.rows.set(JSON.stringify(manualStorageKey('owner', scopeId)), {
+      owner: 'owner', scopeId, parentEditorId, slot: 'content', record: null,
+      commitReferences: [], watermark: { generation: 1, selection: [['content']], resource: snapshot.resource },
+    });
+    storage.rows.set(JSON.stringify(['generation', 'owner', scopeId]), { through: 1 });
+  }
+  await createCommitCollectionWindow().begin('owner')();
+  expect(storage.rows.has(JSON.stringify(manualStorageKey('owner', modern)))).toBe(false);
+  expect(storage.rows.has(JSON.stringify(['generation', 'owner', modern]))).toBe(false);
+  for (const scope of [old, live]) {
+    expect(storage.rows.has(JSON.stringify(manualStorageKey('owner', scope)))).toBe(true);
+    expect(storage.rows.has(JSON.stringify(['generation', 'owner', scope]))).toBe(true);
+  }
 });
 
 it('retains an ACK closed before projection, a pending checkpoint, and a staged manual predecessor', async () => {

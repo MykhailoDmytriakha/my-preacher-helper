@@ -1,6 +1,6 @@
 'use client';
 
-import { isDocumentEditor, manualChoiceRecoveryIdentity, manualScopeIdentity, readManualScopeIdentity } from './editorIdentity';
+import { isDocumentEditor, manualChoiceRecoveryIdentity, manualScopeIdentity, readManualScopeIdentity, retirableManualParent } from './editorIdentity';
 import { GROUP_MEETING_SLOT, hasMeetingDraft } from './groupMeetingAutosave';
 import { replaySavedChoiceDelta } from './manualChoice';
 import { retireManualRecoverySources } from './manualRecovery.client';
@@ -9,7 +9,7 @@ import { ManualScope, reconcileManualCaptures, retainedManualScopeRecord, sameMa
 import { equalValues } from './protocol';
 import { changedRecoveryChoice, discardRecoveryRecord } from './recoveryDiscard.client';
 import { pinRecoveryVersion, versionRecoveryRecord } from './recoverySource.client';
-import { collectCommitRows, readCommitRows } from './retention.client';
+import { activeOrdinaryEditorKey, collectCommitRows, manualStorageKey as key, readCommitRows, removeRetiredManualScope } from './retention.client';
 import { createEngineStorageTransaction, engineOwnerRange, validateCommitReferences, type StorageRead } from './storage.client';
 
 import type { CommitRequest, ManualChoiceRecovery } from './commits';
@@ -43,7 +43,6 @@ export interface ManualScopeStore {
   retireAcknowledgedMeetingDraft?(value: StoredManualScope, requestId: string): Promise<void>;
 }
 const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
-const key = (owner: string, scopeId: string): IDBValidKey => ['manual', owner, scopeId];
 function validate(value: ManualStorageRecord, owner = value.owner, scopeId = value.scopeId): ManualStorageRecord {
   if (value.recoveryVersion !== undefined && (typeof value.recoveryVersion !== 'string' || !value.recoveryVersion)) throw new Error('Invalid manual storage version');
   if (!value.record) {
@@ -155,6 +154,20 @@ export function writeManualChoiceRecoveries(store: IDBObjectStore, read: Storage
   next(0);
 }
 
+function persistManualWatermark(store: IDBObjectStore, read: StorageRead, watermark: ManualScopeWatermark,
+  done: () => void, isCurrent = () => true): void {
+  const { owner, scopeId } = watermark;
+  const write = (retired: boolean) => {
+    if (!isCurrent()) throw changedRecoveryChoice();
+    if (retired) removeRetiredManualScope(store, owner, scopeId);
+    else store.put(versionRecoveryRecord(watermark), key(owner, scopeId));
+    done();
+  };
+  const parent = retirableManualParent(scopeId);
+  if (parent) read(store.get(activeOrdinaryEditorKey(owner, parent)), active => write(!active));
+  else write(false);
+}
+
 /** Shares the commit database so a saved form cannot race collection of its predecessor. */
 export function createIndexedDbManualScopes(collect = collectCommitRows): ManualScopeStore {
   const transaction = createEngineStorageTransaction();
@@ -209,11 +222,11 @@ export function createIndexedDbManualScopes(collect = collectCommitRows): Manual
         return current as StoredManualScope;
       }, version: current => current.recoveryVersion, references: current => current.commitReferences,
       scopeId: value.scopeId, canRemove: () => true, isCurrent,
-      remove: (store, current) => {
+      remove: (store, current, read, done) => {
         const watermark: ManualScopeWatermark = { owner: current.owner, scopeId: current.scopeId,
           parentEditorId: current.parentEditorId, slot: current.slot, record: null, discarded: true, commitReferences: [],
           watermark: { generation: current.record.generation, selection: current.record.selection, resource: current.record.resource } };
-        store.put(versionRecoveryRecord(watermark), key(current.owner, current.scopeId));
+        persistManualWatermark(store, read, watermark, done, isCurrent);
       },
     }),
     create: (value, origin) => write(value, true, origin),
@@ -249,7 +262,7 @@ export function createIndexedDbManualScopes(collect = collectCommitRows): Manual
           const finish = () => {
             const compact: ManualScopeWatermark = { owner, scopeId, parentEditorId: existing.parentEditorId, slot: existing.slot,
               record: null, watermark: { generation: record.generation, selection: record.selection, resource: record.resource }, commitReferences: [] };
-            store.put(versionRecoveryRecord(compact), key(owner, scopeId)); sweep();
+            persistManualWatermark(store, read, compact, sweep);
           };
           if (!record.predecessor) { finish(); return; }
           read(store.get(['identity', owner, record.predecessor.id]), (requestKey: IDBValidKey | undefined) => {

@@ -24,7 +24,7 @@ import { creationsAwaitingRemoval } from './deletionOrdering';
 import { canReplaceDocumentIntent, isDirectLegacyDocumentIntent, requiresWholeActionResolution, savedDocumentAnswer } from './documentDelivery';
 import { capturePlanTemplateName, capturePrayerTitle, captureSermonPlanMode, captureStudyNoteTitle, captureStudyNoteType, captureTagColor, hasHeldAutosaveFields, matchesPlanTemplateNameRequest, matchesPrayerStatusOpening, matchesPrayerTitleRequest, permitsSermonPlanModePredecessor, matchesStudyNoteTitleRequest, matchesStudyNoteTypeRequest, matchesTagColorRequest, sermonPlanModeOpening, studyNoteTitleValue, studyNoteTypeValue, validatedTitleCapture } from './documentFieldAction';
 import { manualSeriesTextChoiceFields, seriesTextChoiceFields } from './documentTextChoice';
-import { ACTION_SLOT, areDifferentTabManualParents, editorIdentity, editorSlot, isDocumentEditorSlot, isManualChoiceRecoveryIdentity, isResourceActionEditor, isRetirableOrdinaryEditor, isSermonChoiceRecoveryIdentity, leasedAtomicEditorId, manualScopeIdentity, protectSermonRecoveryEditor, protectedSermonRecoveryKind, readManualScopeIdentity, recoveryEditorIdentity, type LeasedAtomicAction } from './editorIdentity';
+import { ACTION_SLOT, areDifferentTabManualParents, editorIdentity, editorSlot, isDocumentEditorSlot, isManualChoiceRecoveryIdentity, isResourceActionEditor, isRetirableOrdinaryEditor, isSermonChoiceRecoveryIdentity, leasedAtomicEditorId, manualScopeIdentity, protectSermonRecoveryEditor, protectedSermonRecoveryKind, readManualScopeIdentity, recoveryEditorIdentity, retirableManualParent, retirableManualScopeIdentity, type LeasedAtomicAction } from './editorIdentity';
 import { AddressedFailures, eachFailure, PausedReadFailure } from './failures';
 import { collectionHeadRef } from './feed';
 import { firstGroupMeetingReview } from './groupFirstMeeting';
@@ -3758,13 +3758,14 @@ export class DataEngine {
     return pending;
   }
 
-  private retireManual(manual: ManualFormEntry, generation: number, finishPending = false): void {
+  private retireManual(manual: ManualFormEntry, generation: number, finishPending = false): Promise<void> | undefined {
     manual.meetingSave?.cancel();
     const presence = manual.presence; manual.presence = null;
-    if (manual.scope) {
-      const pending = this.retainLocal(manual.scope.retire({ finishPending }), generation);
-      presence?.releaseAfter(pending);
-    } else presence?.releaseAfter(manual.opening ?? Promise.resolve());
+    const pending = manual.scope ? this.retainLocal(manual.scope.retire({
+      finishPending, endCleanOpening: Boolean(retirableManualParent(manual.scopeId)),
+    }), generation) : manual.opening ?? undefined;
+    presence?.releaseAfter(pending ?? Promise.resolve());
+    return pending;
   }
 
   private abortError(): Error {
@@ -3887,9 +3888,13 @@ export class DataEngine {
     }
     selection = copy(selection);
     const store = this.options.manualScopes;
+    // Group meetings can publish their explicitly admitted draft after a browser restart.
+    const explicit = resource.collection !== 'groups' || slot !== GROUP_MEETING_SLOT;
+    const identify = (suffix?: string) => parent.retirement && explicit
+      ? retirableManualScopeIdentity(parentEditorId, slot, suffix) : manualScopeIdentity(parentEditorId, slot, suffix);
     const listeners = new Set<() => void>();
     const emit = () => { if (parent.closed || !this.current(owner, generation)) return; for (const listener of listeners) { try { listener(); } catch { /* Rendering cannot change staged intent. */ } } };
-    const state: ManualFormEntry = { parent, selection: copy(selection), scopeId: manualScopeIdentity(parentEditorId, slot), scope: null as ManualScope | null, form: null as unknown as ManagedManualForm, emit, presence: null as RecoveryPresenceLease | null, opening: null as Promise<void> | null };
+    const state: ManualFormEntry = { parent, selection: copy(selection), scopeId: identify(), scope: null as ManualScope | null, form: null as unknown as ManagedManualForm, emit, presence: null as RecoveryPresenceLease | null, opening: null as Promise<void> | null };
     this.manualForms.set(registryKey, state);
     let opening: Promise<void> | null = null;
     let requestedRecovery: { scope: ManualScope; generation: number } | undefined;
@@ -3918,10 +3923,10 @@ export class DataEngine {
         const source = sourceScopeId ? await store.read(owner, sourceScopeId) : undefined; active();
         if (sourceScopeId && !source?.record) throw Object.assign(new Error('Manual recovery record no longer exists'), { code: 'draft-gone' });
         if (source?.record && ((recovery === 'same-slot' && source.slot !== slot) || !sameResource(source.record.resource, resource) || !equalValues(source.record.selection, selection))) throw new Error('Manual recovery selection mismatch');
-        let targetId = source ? manualScopeIdentity(parentEditorId, slot, this.options.operationId()) : state.scopeId;
+        let targetId = source ? identify(this.options.operationId()) : state.scopeId;
         let existing = source ?? await store.read(owner, targetId); active();
         if (!source && existing && !existing.record && existing.discarded) {
-          targetId = manualScopeIdentity(parentEditorId, slot, this.options.operationId());
+          targetId = identify(this.options.operationId());
           existing = undefined;
         }
         if (existing?.record) existing = { ...existing, record: reconcileManualCaptures(existing.record, records) };
@@ -4454,8 +4459,8 @@ export class DataEngine {
       address: { owner, kind: 'editor-retirement', id: editorId, resource },
       persist: async () => {
         if (completed && !await completed) {
-          await this.localWriteback.retry(owner, address => address.id === editorId
-            && (address.kind === 'checkpoint' || address.kind === 'closing-save'));
+          await this.localWriteback.retry(owner, address => address.kind === 'manual' ? retirableManualParent(address.id) === editorId
+            : address.id === editorId && (address.kind === 'checkpoint' || address.kind === 'closing-save'));
         }
         await this.options.commits.retireOrdinaryEditor!(owner, editorId);
       },
@@ -4471,11 +4476,14 @@ export class DataEngine {
     entry.closed = true;
     const settled = Promise.allSettled([entry.initializing, entry.controller?.settled()]);
     entry.presence.releaseAfter(Promise.allSettled([settled, writeback]));
-    this.retireOrdinaryEditor(entry, settled, writeback);
+    const manualWrites: Promise<void>[] = [];
     for (const [key, manual] of this.manualForms) if (manual.parent === entry) {
-      this.retireManual(manual, this.generation, this.owner !== null);
+      const pending = this.retireManual(manual, this.generation, this.owner !== null);
+      if (pending && retirableManualParent(manual.scopeId)) manualWrites.push(pending);
       this.manualForms.delete(key);
     }
+    // A Save admitted before close retains its device lifetime until its capture has settled.
+    this.retireOrdinaryEditor(entry, settled, manualWrites.length ? Promise.all([writeback, ...manualWrites]) : writeback);
     entry.stopObservation?.();
     entry.stopObservation = null;
     entry.stopController?.();

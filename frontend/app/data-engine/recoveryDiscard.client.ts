@@ -7,7 +7,7 @@ import { snapshotSchema } from './transport.client';
 
 import type { CommitRequest } from './commits';
 import type { VersionedRecovery } from './recoverySource';
-import type { StorageTransaction } from './storage.client';
+import type { StorageRead, StorageTransaction } from './storage.client';
 import type { ResourceRef } from './types';
 
 export const changedRecoveryChoice = () => Object.assign(new Error('The selected saved draft changed'), { code: 'decision-changed' });
@@ -44,7 +44,7 @@ interface RecoveryDiscard<T> {
   scopeId: string;
   canRemove(value: T): boolean;
   isCurrent(): boolean;
-  remove(store: IDBObjectStore, value: T): void;
+  remove(store: IDBObjectStore, value: T, read: StorageRead, done: () => void): void;
 }
 
 /** Exact selected-copy removal, request evidence and existing retention share one transaction. */
@@ -63,8 +63,7 @@ export function discardRecoveryRecord<T>(transaction: StorageTransaction, choice
         if (references.some(id => !requests.some(request => request.id === id && request.owner === choice.owner && settled(request, choice.owner)))
           || attributed.some(request => request.owner !== choice.owner || !settled(request, choice.owner))) throw pendingDelivery();
         if (!choice.isCurrent()) throw changedRecoveryChoice();
-        choice.remove(store, current);
-        collectCommitRows(store, read, choice.owner, () => done(undefined));
+        choice.remove(store, current, read, () => collectCommitRows(store, read, choice.owner, () => done(undefined)));
       });
     });
   });

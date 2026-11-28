@@ -32,8 +32,9 @@ it('persists letters while a maintenance window is held, restarts, then collects
   expect((await restarted.read('owner', 'editor'))?.checkpoint.draft?.content).toBe('all the unsent words');
   storage.resetCounts(); await sweep();
   expect(storage.counts.transactions).toBe(1);
-  // Request ranges, checkpoints, manual records, references and the new-editor watermark keys.
-  expect(storage.counts.enumerations).toBe(COMMIT_ROW_KINDS.length + 4);
+  // Request ranges, checkpoints, manual records and references, plus three indexed
+  // key ranges for modern ordinary generations, manual generations and compact forms.
+  expect(storage.counts.enumerations).toBe(COMMIT_ROW_KINDS.length + 6);
   expect(hasRequest(saved)).toBe(false);
   expect((await restarted.read('owner', 'editor'))?.checkpoint.draft?.content).toBe('all the unsent words');
   await finish();

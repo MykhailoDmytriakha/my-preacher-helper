@@ -1,5 +1,6 @@
 import { createIndexedDbManualScopes } from '../manualScopes.client';
 import { createIndexedDbCommitStore } from '../commits.client';
+import { manualScopeIdentity, retirableEditorIdentity } from '../editorIdentity';
 import { installStorageHarness } from './storageHarness';
 
 import type { StoredManualScope } from '../manualScopes.client';
@@ -60,6 +61,70 @@ describe('durable manual stages', () => {
     await stages.compact('owner', 'scope'); await stages.compact('owner', 'missing');
     await stages.put({ ...envelope(), record: { ...envelope().record, generation: 2 } });
     expect((await stages.read('owner', 'scope'))?.record?.generation).toBe(2);
+  });
+
+  const parent = retirableEditorIdentity('test-tab', resource, 'default', 'current-opening');
+  const modernScope = manualScopeIdentity(parent, 'title', 'retirable-manual-v1:');
+  const knownStage = (queued: CommitRequest): StoredManualScope => {
+    const value = envelope();
+    return { ...value, scopeId: modernScope, parentEditorId: parent, commitReferences: [queued.id],
+      record: { ...value.record, scopeId: modernScope, active: false, generation: 2, savedGeneration: 1,
+        predecessor: { id: queued.id, owner: 'owner', resource, value: queued.value!, predecessorId: null },
+        savedSelection: value.record.stage } };
+  };
+  const accepted = (queued: CommitRequest): CommitRequest => ({ ...queued, state: 'acknowledged',
+    result: { kind: 'acknowledged', operationId: queued.id, snapshot: { ...baseline, value: queued.value } } });
+  const generationKey = JSON.stringify(['generation', 'owner', modernScope]);
+
+  it('removes a terminal manual scope and its generation only after its parent closes', async () => {
+    const stages = createIndexedDbManualScopes(), commits = createIndexedDbCommitStore();
+    await commits.activateOrdinaryEditor!('owner', parent);
+    const queued = await commits.create({ ...request(), editorId: modernScope });
+    await stages.create(knownStage(queued));
+    await commits.compareAndSet(queued, accepted(queued)); await commits.releaseProjection!('owner', [queued.id]);
+    await stages.compact('owner', modernScope);
+    expect((await stages.read('owner', modernScope))?.record).toBeNull();
+    expect(storage.rows.get(generationKey)).toEqual({ through: 1 });
+    await commits.retireOrdinaryEditor!('owner', parent);
+    expect(await stages.read('owner', modernScope)).toBeUndefined();
+    expect(storage.rows.has(generationKey)).toBe(false);
+    await expect(commits.create({ ...request(), id: 'late-save', editorId: modernScope })).rejects
+      .toMatchObject({ code: 'commit-editor-closed' });
+  });
+
+  it('keeps a detached manual Save and removes its markers after acknowledgement', async () => {
+    const stages = createIndexedDbManualScopes(), commits = createIndexedDbCommitStore();
+    await commits.activateOrdinaryEditor!('owner', parent);
+    const queued = await commits.create({ ...request(), editorId: modernScope });
+    await stages.create(knownStage(queued));
+    await commits.retireOrdinaryEditor!('owner', parent);
+    expect((await stages.read('owner', modernScope))?.record?.predecessor?.id).toBe(queued.id);
+    expect(await commits.list('owner')).toEqual([queued]);
+    await commits.compareAndSet(queued, accepted(queued)); await commits.releaseProjection!('owner', [queued.id]);
+    await stages.compact('owner', modernScope);
+    expect(await stages.read('owner', modernScope)).toBeUndefined();
+    expect(storage.rows.has(generationKey)).toBe(false);
+    expect(await commits.list('owner')).toEqual([]);
+  });
+
+  it.each([false, true])('discards a modern recovery without keeping a marker after its parent ends, parent alive=%s', async stillOpen => {
+    const stages = createIndexedDbManualScopes(), commits = createIndexedDbCommitStore();
+    await commits.activateOrdinaryEditor!('owner', parent);
+    const value = envelope();
+    await stages.create({ ...value, scopeId: modernScope, parentEditorId: parent, record: { ...value.record, scopeId: modernScope } });
+    if (!stillOpen) await commits.retireOrdinaryEditor!('owner', parent);
+    const recovered = (await stages.list('owner', resource))[0];
+    expect(recovered?.record.stage[0]).toMatchObject({ value: 'B' });
+    await stages.discardRecovery!(recovered, () => true);
+    if (stillOpen) expect(await stages.read('owner', modernScope)).toMatchObject({ record: null, discarded: true });
+    else expect(await stages.read('owner', modernScope)).toBeUndefined();
+    expect(await stages.list('owner')).toEqual([]);
+  });
+
+  it('refuses an unadmitted Save of a retired manual opening even before it has a watermark', async () => {
+    const commits = createIndexedDbCommitStore();
+    await expect(commits.create({ ...request(), editorId: modernScope })).rejects.toMatchObject({ code: 'commit-editor-closed' });
+    expect(await commits.list('owner')).toEqual([]);
   });
 
   it('preserves unsaved cancellation-independent data and reports transaction failure', async () => {

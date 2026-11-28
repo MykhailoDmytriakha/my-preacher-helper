@@ -118,9 +118,10 @@ export function createIndexedDbCheckpoints(collect = collectCommitRows): Checkpo
       validate: value => validateRecoveryRecord(value, record.owner, record.editorId, record.checkpoint.confirmed.resource),
       version: value => value.recoveryVersion, references: checkpointCommitReferences, scopeId: record.editorId,
       canRemove: value => value.prepared === null && value.unfinalized.length === 0, isCurrent,
-      remove: (store, current) => {
+      remove: (store, current, _read, done) => {
         deleteCheckpointRecord(store, current.owner, current.editorId);
         for (const id of current.completedCommits ?? []) store.delete(commitProjectionKey(current.owner, id));
+        done();
       },
     }),
     replaceClosedServiceInput: (expected, next) => {

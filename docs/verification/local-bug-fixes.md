@@ -11233,3 +11233,21 @@ Headless Chrome on the local emulators compared the edit dialog at 1280 px and c
 After an authorized release, open or create a disposable series. Click in Description and type an ordinary word, then deliberately select Bold and type a second word. Save, reopen, and confirm that only the second word is bold.
 
 Local case evidence: `artifacts/series-description-bold-20261127/`.
+
+## BUG-20261113-generation-watermarks-never-collected · Retire closed explicit manual forms
+
+Series → a series → Edit Series exposed the retained storage. On `476232930`, three saved titles in three page lifetimes left three generation watermarks and three compact manual rows after all requests had been acknowledged and the parent editors had closed.
+
+A new explicit manual form uses the durable admission of its own parent editor. Capture checks that admission in the same transaction as the command write. While the parent is active, the scope keeps its generation and compact marker. Once the parent ends, terminal markers are released. The parent waits for a Save already invoked even if its stage transaction has not notified JavaScript yet. A pending request can finish after leaving the page, and a private draft can still be recovered or discarded precisely.
+
+Explicit discard and acknowledgement check the admission before retaining a marker. A subsequent full maintenance pass also removes terminal markers left by an older bundle while preserving live, legacy, and referenced rows. The maintenance budget adds two indexed key ranges; per-request collection remains as before.
+
+The storage regressions failed on the previous implementation. Thirteen suites passed 723 tests, and the maintenance budget and Bible reader suites passed 33 more. Scoped ESLint reported zero errors. TypeScript and the isolated production build passed. Independent review checked delayed close, explicit discard, and cleanup shared by old and new bundles.
+
+Headless Chrome used the real pages at 390 px with the local Auth and Firestore emulators. All three closes left zero generation rows, compact forms, full forms and pending requests for the series. The last title remained after reload. A second run held the application command, left the series page, and found one durable request with its form record. Releasing it accepted one operation at revision 2 and removed all associated rows. The saved title was visible on reopening. The optimized stands peaked at 371 MiB of sampled Next.js memory. An interrupted cold development run peaked at 2.94 GiB. All seven test ports were released.
+
+This slice covers new explicit manual forms. Automatic group-meeting recovery, old identities that lack admission proof, non-form one-shot actions, and active crash records without terminal evidence remain in the tracker.
+
+After an authorized release, use one test account profile and a disposable series. Edit and save its title three times, returning to Series and reopening between saves. Inspect only that record's local generation and manual keys after each acknowledgement and exit, and verify the last title after reload. Repeat once with the network paused after local Save, return to Series and reconnect. The pending request should remain until acknowledgement.
+
+Local case evidence: `artifacts/manual-generation-retention-20261127/`.

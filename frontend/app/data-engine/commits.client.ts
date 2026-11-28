@@ -7,7 +7,7 @@ import { checkpointKey, writeCheckpointRecord, writeChoiceCheckpoints } from './
 import { createCollectionCommitReads } from './collectionCommitReads.client';
 import { assertCommitBatch, assertCommitCapture, assertCommitIdentities, orderCommitRequests, type ChoiceCheckpoint, type CommitRequest, type CommitStore } from './commits';
 import { captureDeleteOrder, replayDeleteOrder } from './deletionOrdering';
-import { isRetirableOrdinaryEditor, readLeasedAtomicAction, type LeasedAtomicAction } from './editorIdentity';
+import { captureLifetimeEditor, isRetirableOrdinaryEditor, readLeasedAtomicAction, type LeasedAtomicAction } from './editorIdentity';
 import { equalValues, readField } from './fieldValues';
 import { GROUP_MEETING_SLOT, readyMeetingAutosave } from './groupMeetingAutosave';
 import { HARD_QUESTION_REORDER } from './hardQuestionRankOrder';
@@ -16,7 +16,7 @@ import { writeManualChoiceRecoveries, type ManualStorageRecord } from './manualS
 import { MAX_RELATION_RESOURCES } from './protocol';
 import { isRecoverableCheckpoint, reconcileRecoveryRecord, recoveryCheckpointId, validateRecoveryRecord } from './recovery.client';
 import { versionRecoveryRecord } from './recoverySource.client';
-import { COMMIT_ROW_KINDS, activeOrdinaryEditorKey, collectCommitRows, deferCollection, commitCaptureKey, commitDependencyKey, commitGenerationKey, commitProjectionKey, commitRowKey, commitSnapshotKey, readCommitIdentities, readCommitRows } from './retention.client';
+import { COMMIT_ROW_KINDS, activeOrdinaryEditorKey, collectCommitRows, deferCollection, commitCaptureKey, commitDependencyKey, commitGenerationKey, commitProjectionKey, commitRowKey, commitSnapshotKey, readCommitIdentities, readCommitRows, retireCleanManualScopes } from './retention.client';
 import { projectServiceOrderInput, serviceOrderInputKey } from './serviceOrderInput';
 import { createEngineStorageTransaction, engineOwnerRange, validateCommitReferences, type StorageRead } from './storage.client';
 
@@ -96,8 +96,9 @@ function writeRecord(store: IDBObjectStore, read: StorageRead, frozen: CommitReq
         });
       });
     });
-    if (admission !== 'resume' && isRetirableOrdinaryEditor(frozen.editorId)) {
-      read(store.get(activeOrdinaryEditorKey(frozen.owner, frozen.editorId)), active => {
+    const lifetime = captureLifetimeEditor(frozen.editorId);
+    if (lifetime && (admission !== 'resume' || lifetime !== frozen.editorId)) {
+      read(store.get(activeOrdinaryEditorKey(frozen.owner, lifetime)), active => {
         if (!active) throw Object.assign(new Error('The editor has already closed'), { code: 'commit-editor-closed' });
         capture();
       });
@@ -258,13 +259,12 @@ export function createIndexedDbCommitStore(collect = collectCommitRows, leases?:
     retireOrdinaryEditor: async (owner, editorId) => {
       const key = leaseKey(owner, editorId);
       const lease = heldLeases.get(key);
-      await transaction<void>('readwrite', (store, _read, done) => {
-        if (isRetirableOrdinaryEditor(editorId)) {
-          // The admission row and replay guard retire together. Existing requests own their identities.
-          store.delete(activeOrdinaryEditorKey(owner, editorId));
-          store.delete(commitGenerationKey({ owner, editorId }));
-        }
-        done(undefined);
+      await transaction<void>('readwrite', (store, read, done) => {
+        if (!isRetirableOrdinaryEditor(editorId)) { done(undefined); return; }
+        // The admission row and replay guard retire together. Existing requests own their identities.
+        store.delete(activeOrdinaryEditorKey(owner, editorId));
+        store.delete(commitGenerationKey({ owner, editorId }));
+        retireCleanManualScopes(store, read, owner, editorId, () => done(undefined));
       });
       if (heldLeases.get(key) === lease) heldLeases.delete(key);
       await lease?.release();
@@ -294,10 +294,12 @@ export function createIndexedDbCommitStore(collect = collectCommitRows, leases?:
       const version = options?.resumeVersion;
       return transaction('readwrite', (store, read, done) => {
         const capture = (admission: CaptureAdmission) => createRecord(store, read, frozen, saved => {
+          const settle = () => writeCheckpointRecord(store, read, project(clone(saved)), false, () => done(saved),
+            options?.deferRetention ? deferCollection : collect);
           if (admission === 'resume' && isRetirableOrdinaryEditor(frozen.editorId)) {
             store.delete(activeOrdinaryEditorKey(frozen.owner, frozen.editorId));
-          }
-          writeCheckpointRecord(store, read, project(clone(saved)), false, () => done(saved), options?.deferRetention ? deferCollection : collect);
+            retireCleanManualScopes(store, read, frozen.owner, frozen.editorId, settle);
+          } else settle();
         }, admission);
         if (!version) { capture('ordinary'); return; }
         // Capture at the source identity so a later Discard still sees the queued write.
