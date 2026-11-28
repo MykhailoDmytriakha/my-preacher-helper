@@ -11277,3 +11277,17 @@ In headless Chrome at 390 px on local Auth and Firestore emulators, the clean op
 After an authorized release, use one test profile to open Settings → Bible, change a disposable preference, reload, and verify the saved value without a warning. Confirm that a previously opened marks book renders its saved marks. Keep document recreation, delayed replies, and cross-generation recovery fixtures on isolated emulators unless an isolated production test fixture is explicitly authorized.
 
 Local case evidence: `artifacts/account-generation-20261127/`.
+
+### BUG-20261113-sermon-return-chunk-failure · Recover when the first script body stalls
+
+Sermons → Sermon plan → Preach → reload → return to the same sermon at 820 CSS px. With the private layout script removed from the test precache, the proxy returned HTTP 200 and sent the first 10 bytes. The old worker still had one unanswered script request after 10.5 seconds.
+
+The existing missing-script path now gives the first successful response body eight seconds. If it stalls, both stream consumers are cancelled and the worker makes its one bounded retry. A caller that has already left stops the body rather than making a new request. Installation, other resource routes, and responses with an explicit Retry-After use their usual paths.
+
+The same two focused regressions failed on the previous source and passed after the change. Five worker and offline suites passed 138 tests. Independent review checked stream cancellation, request scope, and the existing retry. TypeScript, scoped ESLint and the local production build passed.
+
+The active Chrome service worker cancelled the first proxy connection at 8.011 seconds and started the sole retry two milliseconds later. Chrome received the complete HTTP 200 through the worker. The sermon opened, the plan button worked, and the original line was still present at revision 1. No document command was sent. A control with a 1.4-second pause completed on its first request. I inspected the sermon and reopened plan. The final Next.js process peaked at 389 MiB sampled memory. All test ports, including the loopback proxy, were released.
+
+This documents the reproduced unfinished response. The network outcome of the original intermittent incident remains unknown. After an authorized deployment, open one disposable sermon, enter Preach, reload the plan and return. If a script fails, capture the worker version, HTTP status and body completion. Keep the interrupted body and precache removal on the local stand.
+
+Local case evidence: `artifacts/sermon-chunk-body-deadline-20261127/`.

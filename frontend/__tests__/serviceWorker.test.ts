@@ -189,6 +189,66 @@ describe('service worker transport boundary', () => {
       }
     });
 
+    // Use the platform's stream tee directly so fake timers do not wait on undici's clone message port.
+    function stalledFirstScript(prefix?: Uint8Array) {
+      let body!: ReadableStreamDefaultController<Uint8Array>;
+      const cancelled = jest.fn();
+      const [original, cloned] = new ReadableStream<Uint8Array>({
+        start: controller => {
+          body = controller;
+          if (prefix) controller.enqueue(prefix);
+        },
+        cancel: cancelled,
+      }).tee();
+      const response = scriptResponse(original);
+      jest.spyOn(response, 'clone').mockReturnValue(scriptResponse(cloned));
+      return { response, body, cancelled };
+    }
+
+    it('bounds the original successful response whose script body stops partway', async () => {
+      jest.useFakeTimers();
+      const { response: stalled, body, cancelled } = stalledFirstScript(new TextEncoder().encode('first bytes'));
+      const retry = scriptResponse(null);
+      const fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValue(retry);
+      const waiting = networkPrecacheAnswer(new Request(scriptUrl), stalled);
+      try {
+        await jest.advanceTimersByTimeAsync(7_999);
+        expect(fetchSpy).not.toHaveBeenCalled();
+        await jest.advanceTimersByTimeAsync(1);
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+        await expect(waiting).resolves.toBe(retry);
+        expect(cancelled).toHaveBeenCalledTimes(1);
+      } finally {
+        try { body.close(); } catch { /* The implementation may already have cancelled. */ }
+        await waiting.catch(() => undefined);
+        fetchSpy.mockRestore();
+        jest.useRealTimers();
+      }
+    });
+
+    it('stops the first body immediately when the caller abandons the request', async () => {
+      jest.useFakeTimers();
+      const { response: stalled, body, cancelled } = stalledFirstScript();
+      const caller = new AbortController();
+      const cause = new DOMException('Page left', 'AbortError');
+      const fetchSpy = jest.spyOn(globalThis, 'fetch');
+      let finished: unknown;
+      const waiting = networkPrecacheAnswer(new Request(scriptUrl, { signal: caller.signal }), stalled)
+        .catch(error => { finished = error; });
+      try {
+        caller.abort(cause);
+        await jest.advanceTimersByTimeAsync(1);
+        expect(finished).toBe(cause);
+        expect(cancelled).toHaveBeenCalledTimes(1);
+        expect(fetchSpy).not.toHaveBeenCalled();
+      } finally {
+        try { body.close(); } catch { /* The implementation may already have cancelled. */ }
+        await waiting;
+        fetchSpy.mockRestore();
+        jest.useRealTimers();
+      }
+    });
+
     it('tries no third request when the replacement body also breaks', async () => {
       const fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValue(interruptedScript('The retry also ended'));
       try {
